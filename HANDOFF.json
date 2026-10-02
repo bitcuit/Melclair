@@ -1,10 +1,10 @@
 {
-  "at": "2026-10-02 15:55",
+  "at": "2026-10-02 17:10",
   "by": "claude-code",
-  "doing": "음악 플레이어·CD 플레이어 모양 GIF 만들기 첫판 완성",
-  "where": "app.js render() / drawDisc() / saveGif()",
-  "state": "돌아감",
-  "next": "실제 앨범 아트와 가사로 써 보고 크기·배치 다듬기",
+  "doing": "노래 구간·싱크 가사·MP4 저장, 글리치·그라디언트 맵·글꼴, 줄·문단별 이미지 저장 추가",
+  "where": "app.js render() / drawLyrics() / drawArt() / saveMp4() / openPicker()",
+  "state": "미검증",
+  "next": "만든 MP4를 실제 트위터에 올려 보고 받아지는지 확인",
   "blocked": "",
   "session": { "id": "8976c071-774d-442f-9659-8d1393cee662", "title": "", "tool": "claude-code" }
 }

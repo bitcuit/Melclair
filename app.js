@@ -1,8 +1,13 @@
 'use strict';
 
-const FONT = '"Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif';
-const FADE = 0.35;        // 이미지·가사 전환에 걸리는 초
-const CD_TURN = 4;        // CD 한 바퀴 대략 몇 초 (루프가 끊기지 않게 정수 바퀴로 맞춤)
+const BASE_FONT = '"Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif';
+let FONT = BASE_FONT;
+const FADE = 0.35;          // 이미지·가사 전환에 걸리는 초
+const CD_TURN = 4;          // CD 한 바퀴 대략 몇 초 (루프가 끊기지 않게 정수 바퀴로 맞춤)
+const ENV_RATE = 50;        // 소리 크기를 1초에 몇 번 재 두는지
+const GIF_MAX_FRAMES = 350; // 트위터 GIF 한도
+const GIF_MAX_MB = 15;
+const MP4_FPS = 30;
 const STORE = 'spincard:v1';
 
 const $ = (id) => document.getElementById(id);
@@ -12,18 +17,24 @@ const ctx = stage.getContext('2d');
 const state = {
   mode: 'player',
   bgMode: 'blur',
-  images: [],              // { url, img }
+  images: [],        // { url, img, cache }
+  audio: null,       // { name, buf, peaks, env, a, b }
   playing: true,
   t: 0,
-  exporting: false,
+  busy: false,       // 저장 중
   cancel: false,
+  tap: null,         // 박자 찍기 중이면 { texts, stamps }
+  fx: 'fade',        // 가사 효과
+  unit: 'line',      // 이미지 저장 단위
 };
+// 이미지 저장용 한 장을 그릴 때만 채운다: { img, items }
+let still = null;
 
 // ---------- 설정 저장 (텍스트만) ----------
-const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'imgSec', 'bgColor', 'size', 'fps'];
+const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font'];
 function saveSettings() {
   try {
-    const o = { mode: state.mode, bgMode: state.bgMode };
+    const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glowOn: $('glowOn').checked, imgGlitch: $('imgGlitch').checked, notes };
     for (const f of FIELDS) o[f] = $(f).value;
     localStorage.setItem(STORE, JSON.stringify(o));
   } catch (e) {}
@@ -35,6 +46,10 @@ function loadSettings() {
     for (const f of FIELDS) if (o[f] != null) $(f).value = o[f];
     if (o.mode) setSeg('mode', o.mode);
     if (o.bgMode) setSeg('bgMode', o.bgMode);
+    if (o.fx) setSeg('fx', o.fx);
+    if (o.glowOn != null) $('glowOn').checked = o.glowOn;
+    if (o.imgGlitch != null) $('imgGlitch').checked = o.imgGlitch;
+    if (o.notes) Object.assign(notes, o.notes);
   } catch (e) {}
 }
 
@@ -43,36 +58,106 @@ function setSeg(id, v) {
   state[id] = v;
 }
 
-// ---------- 시간 계산 ----------
 function num(id, fallback) {
   const v = parseFloat($(id).value);
   return v > 0 ? v : fallback;
 }
 
+// ---------- 시간 표기 ----------
+function fmt(s) {
+  s = Math.max(0, Math.floor(s + 1e-6));
+  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+}
+function fmtTenth(s) {
+  const whole = Math.floor(s);
+  return fmt(whole) + '.' + Math.floor((s - whole) * 10 + 1e-6);
+}
+function fmtLrc(s) {
+  const m = Math.floor(s / 60);
+  const r = s - m * 60;
+  return `[${String(m).padStart(2, '0')}:${r.toFixed(2).padStart(5, '0')}]`;
+}
+// "1:23.4" 또는 "83.4"
+function parseTime(str) {
+  const m = String(str).trim().match(/^(?:(\d+):)?(\d+(?:\.\d+)?)$/);
+  if (!m) return NaN;
+  return (m[1] ? parseInt(m[1], 10) * 60 : 0) + parseFloat(m[2]);
+}
+
+// ---------- 가사 ----------
+// 시간표([mm:ss.xx])가 붙은 줄이 하나라도 있으면 노래 시간 기준, 아니면 한 줄당 N초씩.
 function parseLyrics() {
+  const rows = $('lyrics').value.split('\n');
+  const stamp = /^\s*\[(\d+):(\d+(?:\.\d+)?)\]/;
+  // para: 문단 번호. 빈 줄(또는 글자 없는 시간표 줄)에서 다음 문단으로 넘어간다
+  if (rows.some((r) => stamp.test(r))) {
+    const lines = [];
+    let para = 0;
+    for (const raw of rows) {
+      let s = raw, times = [], m;
+      while ((m = s.match(stamp))) {
+        times.push(parseInt(m[1], 10) * 60 + parseFloat(m[2]));
+        s = s.slice(m[0].length);
+      }
+      if (!s.trim()) para++;
+      for (const start of times) lines.push({ text: s.trim(), start, para });
+    }
+    lines.sort((x, y) => x.start - y.start);
+    lines.forEach((l, i) => { l.end = i + 1 < lines.length ? lines[i + 1].start : l.start + num('lineSec', 3); });
+    return { timed: true, lines };
+  }
   const base = num('lineSec', 3);
-  const out = [];
-  let at = 0;
-  for (const raw of $('lyrics').value.split('\n')) {
+  const lines = [];
+  let at = 0, para = 0;
+  for (const raw of rows) {
     const s = raw.trim();
-    if (!s) continue;
+    if (!s) { para++; continue; }
     const m = s.match(/^\[(\d+(?:\.\d+)?)\]\s*(.*)$/);
     const dur = m && parseFloat(m[1]) > 0 ? parseFloat(m[1]) : base;
-    const text = m ? m[2] : s;
-    out.push({ text, start: at, dur });
+    lines.push({ text: m ? m[2] : s, start: at, end: at + dur, para });
     at += dur;
   }
-  return out;
+  return { timed: false, lines };
+}
+
+// 줄별 발음·번역. 가사 글자를 열쇠로 둬서 박자를 다시 찍어도 남는다
+const notes = {};
+function noteOf(text) {
+  const n = notes[text];
+  return { pron: (n && n.p) || '', trans: (n && n.tr) || '' };
+}
+
+// 미리보기·저장의 t(0~길이)를 노래 시각으로 바꿀 때 더하는 값
+function songBase(lyr = parseLyrics()) {
+  if (state.audio) return state.audio.a;
+  if (lyr.timed && lyr.lines.length) return lyr.lines[0].start;
+  return 0;
 }
 
 function duration() {
-  const lines = parseLyrics();
-  if (lines.length) {
-    const last = lines[lines.length - 1];
-    return last.start + last.dur;
+  if (state.audio) return Math.max(0.5, state.audio.b - state.audio.a);
+  const lyr = parseLyrics();
+  if (lyr.lines.length) {
+    const last = lyr.lines[lyr.lines.length - 1];
+    return Math.max(0.5, last.end - songBase(lyr));
   }
   const n = Math.max(state.images.length, 1);
   return Math.max(n * num('imgSec', 3), 3);
+}
+
+function lyricAt(t) {
+  const lyr = parseLyrics();
+  const shift = parseFloat($('shift').value) || 0;
+  const at = (lyr.timed ? songBase(lyr) : 0) + t - shift;
+  for (const l of lyr.lines) {
+    if (at >= l.start && at < l.end) {
+      const dur = l.end - l.start;
+      const fade = Math.min(FADE, dur / 3);
+      const alpha = Math.min(1, (at - l.start) / fade, (l.end - at) / fade);
+      return { text: l.text, alpha: Math.max(0, alpha), since: at - l.start, at, ...noteOf(l.text) };
+    }
+  }
+  return null;
 }
 
 // ---------- 이미지 ----------
@@ -82,7 +167,7 @@ function addFiles(files) {
   return Promise.all(list.map((f) => new Promise((resolve) => {
     const url = URL.createObjectURL(f);
     const img = new Image();
-    img.onload = () => resolve({ url, img, blurCache: {} });
+    img.onload = () => resolve({ url, img, cache: {} });
     img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
     img.src = url;
   }))).then((items) => {
@@ -116,6 +201,7 @@ function renderThumbs() {
 
 // 지금 시각에 보일 이미지와 다음 이미지로 넘어가는 정도(0~1)
 function imageAt(t) {
+  if (still) return { a: still.img, b: null, p: 0 };
   const n = state.images.length;
   if (!n) return { a: null, b: null, p: 0 };
   if (n === 1) return { a: state.images[0], b: null, p: 0 };
@@ -128,29 +214,403 @@ function imageAt(t) {
   return { a, b, p: Math.min(1, Math.max(0, p)) };
 }
 
+// fit: 이미지별 위치·확대 { fx, fy, zoom }. 없으면 가운데 꽉 채움
+function drawCover(g, img, x, y, w, h, fit) {
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const zoom = fit ? fit.zoom || 1 : 1;
+  const s = Math.max(w / iw, h / ih) * zoom;
+  const sw = w / s, sh = h / s;
+  const fx = fit && fit.fx != null ? fit.fx : 0.5;
+  const fy = fit && fit.fy != null ? fit.fy : 0.5;
+  g.drawImage(img, (iw - sw) * fx, (ih - sh) * fy, sw, sh, x, y, w, h);
+}
+
+// ---------- 그라디언트 맵 ----------
+const GMAPS = {
+  dawn: ['#1b1440', '#ff7eb6', '#ffe8d2'],
+  sea: ['#08263d', '#2bb3c0', '#e6fff6'],
+  sunset: ['#2a0a1f', '#e2563b', '#ffd27a'],
+  mono: ['#111111', '#f2f2f2'],
+  sepia: ['#2b1b10', '#c8935a', '#f6e7c8'],
+  neon: ['#120458', '#ff00a0', '#f5ff6a'],
+};
+function gmStops() {
+  const v = $('gmap').value;
+  if (v === 'custom') return [$('gmA').value, $('gmB').value];
+  return GMAPS[v] || null;
+}
+function gmKey() {
+  const s = gmStops();
+  return s ? s.join('') : '';
+}
+// 밝기에 따라 색을 다시 입힌 이미지. 색 조합마다 한 번만 만든다
+function srcOf(it) {
+  const stops = gmStops();
+  if (!stops) return it.img;
+  const key = 'gm' + stops.join('');
+  if (it.cache[key]) return it.cache[key];
+  const iw = it.img.naturalWidth, ih = it.img.naturalHeight;
+  const k = Math.min(1, 1200 / Math.max(iw, ih));
+  const c = document.createElement('canvas');
+  c.width = Math.round(iw * k); c.height = Math.round(ih * k);
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(it.img, 0, 0, c.width, c.height);
+  const rgb = stops.map((h) => { const v = parseInt(h.slice(1), 16); return [v >> 16, (v >> 8) & 255, v & 255]; });
+  const lut = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const p = (i / 255) * (rgb.length - 1);
+    const j = Math.min(rgb.length - 2, Math.floor(p)), f = p - j;
+    for (let ch = 0; ch < 3; ch++) lut[i * 3 + ch] = rgb[j][ch] + (rgb[j + 1][ch] - rgb[j][ch]) * f;
+  }
+  const d = g.getImageData(0, 0, c.width, c.height);
+  const px = d.data;
+  for (let i = 0; i < px.length; i += 4) {
+    const l = Math.round(0.299 * px[i] + 0.587 * px[i + 1] + 0.114 * px[i + 2]);
+    px[i] = lut[l * 3]; px[i + 1] = lut[l * 3 + 1]; px[i + 2] = lut[l * 3 + 2];
+  }
+  g.putImageData(d, 0, 0);
+  // 다른 색 조합으로 만든 것은 버린다
+  for (const k2 of Object.keys(it.cache)) if (k2.startsWith('gm')) delete it.cache[k2];
+  it.cache[key] = c;
+  return c;
+}
+
 // 흐린 배경은 무거워서 크기별로 한 번만 만든다
 function blurredBg(it, W, H) {
-  const key = W + 'x' + H;
-  if (it.blurCache[key]) return it.blurCache[key];
+  const key = 'bg' + W + gmKey();
+  if (it.cache[key]) return it.cache[key];
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const g = c.getContext('2d');
   const r = W * 0.06;
   g.filter = `blur(${r}px) saturate(1.2)`;
-  drawCover(g, it.img, -r * 2, -r * 2, W + r * 4, H + r * 4);
+  drawCover(g, srcOf(it), -r * 2, -r * 2, W + r * 4, H + r * 4);
   g.filter = 'none';
   g.fillStyle = 'rgba(0,0,0,0.38)';
   g.fillRect(0, 0, W, H);
-  it.blurCache[key] = c;
+  it.cache[key] = c;
   return c;
 }
 
-function drawCover(g, img, x, y, w, h) {
-  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
-  const s = Math.max(w / iw, h / ih);
-  const sw = w / s, sh = h / s;
-  g.drawImage(img, (iw - sw) / 2, (ih - sh) / 2, sw, sh, x, y, w, h);
+// 아트 뒤로 번지는 빛. 모양(네모·원)과 크기별로 한 번만 만든다
+function glowImage(it, size, round, u) {
+  const key = 'glow' + size + (round ? 'o' : 's') + gmKey() + [it.fx, it.fy, it.zoom].join();
+  if (it.cache[key]) return it.cache[key];
+  const pad = Math.round(size * 0.45);
+  const c = document.createElement('canvas');
+  c.width = c.height = size + pad * 2;
+  const g = c.getContext('2d');
+  const src = document.createElement('canvas');
+  src.width = src.height = c.width;
+  const sg = src.getContext('2d');
+  sg.save();
+  sg.beginPath();
+  if (round) sg.arc(c.width / 2, c.width / 2, size / 2, 0, Math.PI * 2);
+  else sg.roundRect(pad, pad, size, size, 14 * u);
+  sg.clip();
+  drawCover(sg, srcOf(it), pad, pad, size, size, it);
+  sg.restore();
+  g.filter = `blur(${size * 0.09}px) saturate(1.8) brightness(1.15)`;
+  g.drawImage(src, 0, 0);
+  it.cache[key] = c;
+  return c;
 }
+
+// ---------- 소리 ----------
+let actx = null;
+function audioCtx() {
+  if (!actx) actx = new AudioContext();
+  if (actx.state === 'suspended') actx.resume();
+  return actx;
+}
+
+async function loadAudio(file) {
+  const msg = $('status');
+  msg.textContent = '노래 읽는 중';
+  try {
+    const buf = await audioCtx().decodeAudioData(await file.arrayBuffer());
+    const ch = [];
+    for (let i = 0; i < buf.numberOfChannels; i++) ch.push(buf.getChannelData(i));
+    const len = buf.length;
+
+    // 파형
+    const peaks = new Float32Array(800);
+    const per = Math.max(1, Math.floor(len / peaks.length));
+    for (let i = 0; i < peaks.length; i++) {
+      let m = 0;
+      for (let j = i * per, end = Math.min(len, j + per); j < end; j += 4) {
+        const v = Math.abs(ch[0][j]);
+        if (v > m) m = v;
+      }
+      peaks[i] = m;
+    }
+
+    // 소리 크기(주변 빛 세기). 빨리 커지고 천천히 줄어든다
+    const step = Math.floor(buf.sampleRate / ENV_RATE);
+    const raw = new Float32Array(Math.ceil(len / step));
+    for (let i = 0; i < raw.length; i++) {
+      let s = 0, n = 0;
+      for (let j = i * step, end = Math.min(len, j + step); j < end; j += 2) {
+        let v = 0;
+        for (const c of ch) v += c[j];
+        v /= ch.length;
+        s += v * v; n++;
+      }
+      raw[i] = Math.sqrt(s / Math.max(1, n));
+    }
+    const sorted = Float32Array.from(raw).sort();
+    const top = sorted[Math.floor(sorted.length * 0.95)] || 1;
+    const env = new Float32Array(raw.length);
+    let cur = 0;
+    for (let i = 0; i < raw.length; i++) {
+      const v = Math.min(1, raw[i] / top);
+      cur += (v - cur) * (v > cur ? 0.6 : 0.08);
+      env[i] = cur;
+    }
+
+    state.audio = { name: file.name, buf, peaks, env, a: 0, b: Math.min(15, buf.duration) };
+
+    // "가수 - 제목.mp3" 꼴이면 빈 칸을 채운다
+    const stem = file.name.replace(/\.[^.]+$/, '');
+    const parts = stem.split(/\s+-\s+/);
+    if (parts.length >= 2) {
+      if (!$('artist').value.trim()) $('artist').value = parts[0].trim();
+      if (!$('title').value.trim()) $('title').value = parts.slice(1).join(' - ').trim();
+    } else if (!$('title').value.trim()) {
+      $('title').value = stem;
+    }
+
+    $('audioName').textContent = file.name;
+    $('audioBox').hidden = false;
+    $('audioDrop').hidden = true;
+    $('tap').disabled = false;
+    syncSegInputs();
+    state.t = 0;
+    restartAudio();
+    updateInfo();
+    saveSettings();
+  } catch (e) {
+    msg.textContent = '이 파일은 읽을 수 없습니다. mp3·m4a·wav 파일을 넣어 주세요';
+  }
+}
+
+function removeAudio() {
+  stopAudio();
+  state.audio = null;
+  $('audioBox').hidden = true;
+  $('audioDrop').hidden = false;
+  $('tap').disabled = true;
+  state.t = 0;
+  updateInfo();
+}
+
+function levelAt(t) {
+  const au = state.audio;
+  if (!au || still) return 0.5;
+  const i = Math.floor((au.a + t) * ENV_RATE);
+  return au.env[Math.max(0, Math.min(au.env.length - 1, i))];
+}
+
+// 미리보기 재생: 구간을 반복해서 튼다
+let src = null, playStart = 0, playFrom = 0;
+function stopAudio() {
+  if (src) { try { src.stop(); } catch (e) {} src.disconnect(); src = null; }
+}
+function restartAudio() {
+  stopAudio();
+  const au = state.audio;
+  if (!au || !state.playing || state.busy) return;
+  const ac = audioCtx();
+  src = ac.createBufferSource();
+  src.buffer = au.buf;
+  if (!state.tap) {
+    src.loop = true;
+    src.loopStart = au.a;
+    src.loopEnd = au.b;
+  }
+  src.connect(ac.destination);
+  playFrom = state.t;
+  playStart = ac.currentTime;
+  src.start(0, au.a + state.t);
+}
+function audioClock() {
+  // 박자 찍기 중에는 구간 끝을 넘어서도 흐른다
+  const el = playFrom + (actx.currentTime - playStart);
+  return state.tap ? el : el % duration();
+}
+
+// ---------- 파형 ----------
+const waveCanvas = $('waveCanvas');
+function drawWave() {
+  const au = state.audio;
+  if (!au || $('audioBox').hidden) return;
+  const dpr = window.devicePixelRatio || 1;
+  const w = waveCanvas.clientWidth * dpr, h = waveCanvas.clientHeight * dpr;
+  if (!w) return;
+  if (waveCanvas.width !== w || waveCanvas.height !== h) { waveCanvas.width = w; waveCanvas.height = h; }
+  const g = waveCanvas.getContext('2d');
+  const css = getComputedStyle(document.body);
+  const text = css.getPropertyValue('--text').trim();
+  const dim = css.getPropertyValue('--line').trim();
+  const D = au.buf.duration;
+  const xa = (au.a / D) * w, xb = (au.b / D) * w;
+  g.clearRect(0, 0, w, h);
+  g.fillStyle = text;
+  g.globalAlpha = 0.08;
+  g.fillRect(xa, 0, xb - xa, h);
+  g.globalAlpha = 1;
+  const bars = Math.floor(w / (2 * dpr));
+  for (let i = 0; i < bars; i++) {
+    const p = au.peaks[Math.floor((i / bars) * au.peaks.length)];
+    const x = (i / bars) * w;
+    const bh = Math.max(dpr, p * h * 0.9);
+    g.fillStyle = x >= xa && x <= xb ? text : dim;
+    g.fillRect(x, (h - bh) / 2, dpr, bh);
+  }
+  // 재생 위치
+  const xp = ((au.a + Math.min(state.t, au.b - au.a)) / D) * w;
+  g.fillStyle = text;
+  g.fillRect(xp, 0, dpr * 1.5, h);
+}
+
+let drag = null;
+waveCanvas.addEventListener('pointerdown', (e) => {
+  if (!state.audio || state.tap) return;
+  waveCanvas.setPointerCapture(e.pointerId);
+  drag = { x0: e.offsetX, moved: false };
+});
+waveCanvas.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  if (Math.abs(e.offsetX - drag.x0) > 3) drag.moved = true;
+  if (!drag.moved) return;
+  const D = state.audio.buf.duration, w = waveCanvas.clientWidth;
+  const t0 = (Math.min(drag.x0, e.offsetX) / w) * D;
+  const t1 = (Math.max(drag.x0, e.offsetX) / w) * D;
+  setSegment(t0, Math.max(t1, t0 + 0.5), false);
+});
+waveCanvas.addEventListener('pointerup', (e) => {
+  if (!drag) return;
+  const au = state.audio;
+  if (!drag.moved) {
+    // 누른 자리에서 같은 길이로 다시 시작
+    const len = au.b - au.a;
+    const t0 = (e.offsetX / waveCanvas.clientWidth) * au.buf.duration;
+    setSegment(t0, t0 + len, true);
+  } else {
+    setSegment(au.a, au.b, true);
+  }
+  drag = null;
+});
+
+function setSegment(a, b, restart) {
+  const au = state.audio;
+  const D = au.buf.duration;
+  a = Math.max(0, Math.min(a, D - 0.5));
+  b = Math.max(a + 0.5, Math.min(b, D));
+  au.a = a; au.b = b;
+  syncSegInputs();
+  if (restart) {
+    state.t = 0;
+    restartAudio();
+    updateInfo();
+  }
+}
+function syncSegInputs() {
+  $('segA').value = fmtTenth(state.audio.a);
+  $('segB').value = fmtTenth(state.audio.b);
+}
+for (const id of ['segA', 'segB']) {
+  $(id).addEventListener('change', () => {
+    const a = parseTime($('segA').value), b = parseTime($('segB').value);
+    if (isNaN(a) || isNaN(b)) { syncSegInputs(); return; }
+    setSegment(a, b, true);
+  });
+}
+
+// ---------- 가사 찾기 ----------
+async function findLyrics() {
+  const title = $('title').value.trim();
+  const artist = $('artist').value.trim();
+  const msg = $('lyricMsg');
+  if (!title) { msg.textContent = '제목을 먼저 넣어 주세요'; $('title').focus(); return; }
+  msg.textContent = '찾는 중';
+  try {
+    const q = new URLSearchParams({ track_name: title });
+    if (artist) q.set('artist_name', artist);
+    let list = await (await fetch('https://lrclib.net/api/search?' + q)).json();
+    if (!list.length && artist) {
+      list = await (await fetch('https://lrclib.net/api/search?' + new URLSearchParams({ q: artist + ' ' + title }))).json();
+    }
+    const D = state.audio ? state.audio.buf.duration : null;
+    const near = (x) => (D ? Math.abs((x.duration || 0) - D) : 0);
+    const synced = list.filter((x) => x.syncedLyrics).sort((x, y) => near(x) - near(y));
+    if (synced.length) {
+      $('lyrics').value = synced[0].syncedLyrics;
+      msg.textContent = `${synced[0].artistName} · ${synced[0].trackName}`
+        + (D && near(synced[0]) > 3 ? ' — 노래 파일과 길이가 달라 박자가 어긋날 수 있습니다' : '');
+    } else {
+      const plain = list.find((x) => x.plainLyrics);
+      if (plain) {
+        $('lyrics').value = plain.plainLyrics;
+        msg.textContent = '박자 없는 가사만 있습니다. 박자 찍기로 맞춰 주세요';
+      } else {
+        msg.textContent = '가사를 못 찾았습니다. 제목·가수 철자를 확인해 주세요';
+      }
+    }
+    updateInfo();
+    saveSettings();
+    renderNotes();
+  } catch (e) {
+    msg.textContent = '가사 사이트에 연결하지 못했습니다. 인터넷 연결을 확인해 주세요';
+  }
+}
+
+// ---------- 박자 찍기 ----------
+// 구간 시작부터 노래를 틀고, 스페이스를 누를 때마다 다음 줄의 시작 시각을 적는다.
+function startTap() {
+  // 빈 줄(문단 나눔)은 기억해 뒀다가 결과에 다시 넣는다
+  const texts = [], breaks = new Set();
+  for (const r of $('lyrics').value.split('\n')) {
+    const s = r.replace(/^(\s*\[\d+:\d+(?:\.\d+)?\])+/, '').replace(/^\s*\[\d+(?:\.\d+)?\]/, '').trim();
+    if (s) texts.push(s); else if (texts.length) breaks.add(texts.length);
+  }
+  if (!texts.length) { $('lyricMsg').textContent = '가사를 먼저 넣어 주세요'; return; }
+  document.activeElement?.blur();
+  state.tap = { texts, breaks, stamps: [] };
+  state.t = 0;
+  setPlaying(true);
+  $('tap').classList.add('tapping');
+  tapMsg();
+}
+function tapMsg() {
+  const { texts, stamps } = state.tap;
+  $('tap').textContent = '다음 줄';
+  $('lyricMsg').textContent = `${stamps.length} / ${texts.length} — 다음 줄: ${texts[stamps.length]} · 스페이스로 찍기, Esc로 그만`;
+}
+function tapNext() {
+  const tp = state.tap;
+  tp.stamps.push(state.audio.a + audioClock());
+  if (tp.stamps.length < tp.texts.length) { tapMsg(); return; }
+  $('lyrics').value = tp.texts.map((s, i) => (tp.breaks.has(i) ? '\n' : '') + fmtLrc(tp.stamps[i]) + ' ' + s).join('\n');
+  $('shift').value = 0;
+  endTap(`${tp.texts.length}줄 박자를 찍었습니다`);
+  updateInfo();
+  renderNotes();
+  saveSettings();
+}
+function endTap(text) {
+  state.tap = null;
+  $('tap').classList.remove('tapping');
+  $('tap').textContent = '박자 찍기';
+  $('lyricMsg').textContent = text;
+  state.t = 0;
+  restartAudio();
+}
+document.addEventListener('keydown', (e) => {
+  if (!state.tap) return;
+  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); tapNext(); }
+  if (e.code === 'Escape') endTap('박자 찍기를 그만뒀습니다');
+});
 
 // ---------- 색 ----------
 function isLight(hex) {
@@ -160,15 +620,9 @@ function isLight(hex) {
 }
 
 // ---------- 그리기 ----------
-function fmt(s) {
-  s = Math.max(0, Math.floor(s + 1e-6));
-  return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
-}
-
 function wrap(g, text, maxW, maxLines) {
   const lines = [];
   let cur = '';
-  // 한글은 글자 단위, 영문은 단어 단위로 끊기도록 공백을 경계로 먼저 나눈다
   for (const word of text.split(/(\s+)/)) {
     if (!word) continue;
     const tryLine = cur + word;
@@ -208,7 +662,6 @@ function drawBackground(g, W, H, t) {
     g.fillRect(0, 0, W, H);
     return;
   }
-  g.globalAlpha = 1;
   g.drawImage(blurredBg(a, W, H), 0, 0);
   if (b && p > 0) {
     g.globalAlpha = p;
@@ -224,41 +677,244 @@ function drawArt(g, x, y, w, h, t) {
     g.fillRect(x, y, w, h);
     return;
   }
-  drawCover(g, a.img, x, y, w, h);
-  if (b && p > 0) {
-    g.globalAlpha = p;
-    drawCover(g, b.img, x, y, w, h);
-    g.globalAlpha = 1;
-  }
-}
-
-function lyricAt(t) {
-  const lines = parseLyrics();
-  for (const l of lines) {
-    if (t >= l.start && t < l.start + l.dur) {
-      const fade = Math.min(FADE, l.dur / 3);
-      const alpha = Math.min(1, (t - l.start) / fade, (l.start + l.dur - t) / fade);
-      return { text: l.text, alpha: Math.max(0, alpha) };
+  const gs = imageGlitchAt(t);
+  if (gs <= 0) {
+    drawCover(g, srcOf(a), x, y, w, h, a);
+    if (b && p > 0) {
+      g.globalAlpha = p;
+      drawCover(g, srcOf(b), x, y, w, h, b);
+      g.globalAlpha = 1;
     }
+    return;
   }
-  return null;
+  // 글리치: 따로 그린 뒤 색을 가르고 띠를 어긋나게 해서 붙인다
+  const W2 = Math.ceil(w), H2 = Math.ceil(h);
+  const [c0, c1, c2] = artBufs(W2, H2);
+  const g0 = c0.getContext('2d');
+  g0.clearRect(0, 0, W2, H2);
+  drawCover(g0, srcOf(a), 0, 0, W2, H2, a);
+  if (b && p > 0) {
+    g0.globalAlpha = p;
+    drawCover(g0, srcOf(b), 0, 0, W2, H2, b);
+    g0.globalAlpha = 1;
+  }
+  const seed = Math.floor(t * 12) + (still ? 7 : 0);
+  const off = Math.round(w * (0.008 + 0.025 * gs));
+  // 빨강·초록·파랑을 따로 떼어 좌우로 민 다음 더한다
+  const g2 = c2.getContext('2d');
+  g2.globalCompositeOperation = 'source-over';
+  g2.fillStyle = '#000';
+  g2.fillRect(0, 0, W2, H2);
+  const g1 = c1.getContext('2d');
+  for (const [col, dx] of [['#f00', -off], ['#0f0', 0], ['#00f', off]]) {
+    g1.globalCompositeOperation = 'copy';
+    g1.drawImage(c0, 0, 0);
+    g1.globalCompositeOperation = 'multiply';
+    g1.fillStyle = col;
+    g1.fillRect(0, 0, W2, H2);
+    g2.globalCompositeOperation = 'lighter';
+    g2.drawImage(c1, dx, 0);
+  }
+  g2.globalCompositeOperation = 'source-over';
+  // 색을 민 만큼 생긴 가장자리 줄무늬는 잘라내고 살짝 늘려 붙인다
+  const cx0 = off, cw = W2 - off * 2;
+  g.drawImage(c2, cx0, 0, cw, H2, x, y, w, h);
+  // 가로 띠 몇 개를 옆으로 민다
+  const bands = 14;
+  const bh = H2 / bands;
+  for (let i = 0; i < bands; i++) {
+    const r = hash(seed * 31 + i);
+    if (r > 0.18 + 0.35 * gs) continue;
+    const dx = (hash(seed * 7 + i * 3) - 0.5) * w * 0.12 * gs;
+    const hh = bh * (0.3 + hash(seed + i * 5) * 0.9);
+    const yy = i * bh;
+    g.drawImage(c2, cx0, yy, cw, hh, x + dx, y + yy, w, hh);
+  }
 }
 
-function drawLyric(g, cx, top, maxW, size, fg, t) {
-  const l = lyricAt(t);
-  if (!l || !l.text) return;
-  g.font = `600 ${size}px ${FONT}`;
-  g.textAlign = 'center';
+const artCanvases = [0, 1, 2].map(() => document.createElement('canvas'));
+function artBufs(w, h) {
+  for (const c of artCanvases) if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  return artCanvases;
+}
+
+// 이미지 글리치 세기(0~1). 이미지가 바뀔 때 세게, 그 밖에는 가끔 짧게
+function imageGlitchAt(t) {
+  if (!$('imgGlitch').checked) return 0;
+  if (still) return 0.55;
+  if (state.images.length > 1) {
+    const sec = num('imgSec', 3);
+    const into = t - Math.floor(t / sec) * sec;
+    const toNext = sec - into;
+    if (toNext < 0.2) return 0.4 + 0.6 * (1 - toNext / 0.2);
+    if (into < 0.35) return 1 - into / 0.35 * 0.7;
+  }
+  const k = Math.floor(t * 8);
+  return hash(k + 99) < 0.07 ? 0.35 + hash(k + 3) * 0.4 : 0;
+}
+
+// 아트(또는 디스크) 뒤에서 번져 나오는 빛. 노래가 있으면 소리 크기를 따라 숨 쉰다
+function drawGlow(g, cx, cy, size, round, u, t) {
+  if (!$('glowOn').checked) return;
+  const { a, b, p } = imageAt(t);
+  if (!a) return;
+  const lv = levelAt(t);
+  const scale = 1 + 0.06 * lv;
+  const alpha = 0.45 + 0.5 * lv;
+  const one = (it, k) => {
+    const c = glowImage(it, Math.round(size), round, u);
+    const s = c.width * scale;
+    g.globalAlpha = alpha * k;
+    g.drawImage(c, cx - s / 2, cy - s / 2, s, s);
+  };
+  g.save();
+  g.globalCompositeOperation = 'screen';
+  one(a, 1);
+  if (b && p > 0) one(b, p);
+  g.restore();
+}
+
+// 0~1 사이의 고정된 난수. 같은 입력이면 늘 같아서 GIF·MP4가 미리보기와 똑같다
+function hash(n) {
+  const x = Math.sin(n * 127.1 + 311.7) * 43758.5453;
+  return x - Math.floor(x);
+}
+
+// 글리치 세기(0~1). 줄이 바뀔 때 세게, 그 뒤로는 가끔 짧게 튄다
+function glitchOf(item) {
+  if (item.glitch != null) return item.glitch;
+  if (item.since < 0.45) return 1 - item.since / 0.45 * 0.7;
+  const k = Math.floor(item.at * 12);
+  return hash(k) < 0.06 ? 0.5 + hash(k + 7) * 0.4 : 0;
+}
+
+// 가사 묶음(발음·본문·번역)을 구역 [y0, y1] 가운데에 맞춰 그린다. 넘치면 글씨를 줄인다
+function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
+  let items;
+  if (still) items = still.items;
+  else {
+    const l = lyricAt(t);
+    items = l && l.text ? [l] : [];
+  }
+  if (!items.length) return;
+  const glitch = state.fx === 'glitch';
+  const left = opt.align === 'left';
+  const big = opt.big || 1;
+  g.textAlign = left ? 'left' : 'center';
   g.textBaseline = 'top';
-  const lines = wrap(g, l.text, maxW, 2);
-  g.globalAlpha = l.alpha;
-  g.fillStyle = fg;
-  lines.forEach((s, i) => g.fillText(s, cx, top + i * size * 1.4));
+
+  let layout, k = 1;
+  for (; k >= 0.4; k -= 0.05) {
+    const one = items.length === 1;
+    const S = { main: 17 * u * k * big, pron: 11.5 * u * k * big, trans: 13 * u * k * big };
+    let h = 0;
+    layout = items.map((it, i) => {
+      g.font = `600 ${S.main}px ${FONT}`;
+      const main = wrap(g, it.text, maxW, one ? 2 : 2);
+      g.font = `500 ${S.pron}px ${FONT}`;
+      const pron = it.pron ? fitText(g, it.pron, maxW) : '';
+      g.font = `500 ${S.trans}px ${FONT}`;
+      const trans = it.trans ? wrap(g, it.trans, maxW, one ? 2 : 1) : [];
+      const bh = (pron ? S.pron * 1.5 : 0) + main.length * S.main * 1.38 + trans.length * S.trans * 1.4 + (trans.length ? 3 * u : 0);
+      h += bh + (i ? 10 * u * k * big : 0);
+      return { it, main, pron, trans, bh };
+    });
+    layout.S = S;
+    layout.h = h;
+    if (h <= y1 - y0) break;
+  }
+  const S = layout.S;
+  let y = opt.top ? y0 : y0 + Math.max(0, (y1 - y0 - layout.h) / 2);
+  for (const L of layout) {
+    const alpha = still ? 1 : L.it.alpha;
+    const gs = glitch ? glitchOf(L.it) : 0;
+    // 글리치는 나타날 때 깜빡이며 들어온다
+    const a = glitch && !still && L.it.since < 0.3 ? (hash(Math.floor(L.it.at * 30)) < 0.35 ? 0.15 : 1) : alpha;
+    if (L.pron) {
+      g.globalAlpha = a;
+      g.fillStyle = dim;
+      g.font = `500 ${S.pron}px ${FONT}`;
+      g.fillText(L.pron, cx, y);
+      y += S.pron * 1.5;
+    }
+    for (const s of L.main) {
+      if (gs > 0) {
+        g.font = `600 ${S.main}px ${FONT}`;
+        const tw = g.measureText(s).width;
+        drawGlitchText(g, s, left ? cx + tw / 2 : cx, y, S.main, fg, a, gs, u, L.it.at);
+        g.textAlign = left ? 'left' : 'center';
+      }
+      else {
+        g.globalAlpha = a;
+        g.fillStyle = fg;
+        g.font = `600 ${S.main}px ${FONT}`;
+        g.fillText(s, cx, y);
+      }
+      y += S.main * 1.38;
+    }
+    if (L.trans.length) {
+      y += 3 * u;
+      g.globalAlpha = a;
+      g.fillStyle = dim;
+      g.font = `500 ${S.trans}px ${FONT}`;
+      for (const s of L.trans) { g.fillText(s, cx, y); y += S.trans * 1.4; }
+    }
+    y += 10 * u * k * big;
+  }
+  g.globalAlpha = 1;
+}
+
+// 색이 갈라지고 가로 띠가 어긋나는 글씨
+const gBase = document.createElement('canvas');
+const gTint = document.createElement('canvas');
+function drawGlitchText(g, text, cx, y, size, fg, alpha, s, u, seed) {
+  const font = `600 ${size}px ${FONT}`;
+  const bc = gBase.getContext('2d');
+  bc.font = font;
+  const pad = Math.ceil(24 * u);
+  const w = Math.ceil(bc.measureText(text).width) + pad * 2;
+  const h = Math.ceil(size * 1.5);
+  if (gBase.width < w || gBase.height < h) { gBase.width = gTint.width = Math.max(gBase.width, w); gBase.height = gTint.height = Math.max(gBase.height, h); }
+  bc.clearRect(0, 0, gBase.width, gBase.height);
+  bc.font = font;
+  bc.textAlign = 'left';
+  bc.textBaseline = 'top';
+  bc.fillStyle = fg;
+  bc.fillText(text, pad, size * 0.15);
+  const x0 = cx - w / 2;
+  const y0 = y - size * 0.15;
+  const tc = gTint.getContext('2d');
+  const tint = (color, dx) => {
+    tc.globalCompositeOperation = 'copy';
+    tc.drawImage(gBase, 0, 0);
+    tc.globalCompositeOperation = 'source-in';
+    tc.fillStyle = color;
+    tc.fillRect(0, 0, gTint.width, gTint.height);
+    tc.globalCompositeOperation = 'source-over';
+    g.drawImage(gTint, 0, 0, w, h, x0 + dx, y0, w, h);
+  };
+  const off = (2 + 5 * s) * u;
+  g.globalAlpha = alpha * 0.85;
+  tint('#ff2d6f', -off * (0.6 + hash(seed * 3.1) * 0.6));
+  tint('#22e6ff', off * (0.6 + hash(seed * 5.3) * 0.6));
+  // 본문을 가로 띠로 잘라 몇 개를 옆으로 민다
+  g.globalAlpha = alpha;
+  const bands = 6;
+  const bh = h / bands;
+  const step = Math.floor(seed * 24);
+  for (let i = 0; i < bands; i++) {
+    const r = hash(step * 13 + i);
+    const dx = r < 0.3 * s + 0.1 ? (hash(step * 17 + i) - 0.5) * 22 * u * s : 0;
+    g.drawImage(gBase, 0, i * bh, w, bh, x0 + dx, y0 + i * bh, w, bh);
+  }
   g.globalAlpha = 1;
 }
 
 function drawProgress(g, x, y, w, u, fg, dim, t, T) {
-  const p = T ? Math.min(1, t / T) : 0;
+  // 노래가 있으면 곡 전체에서의 위치를 보여준다
+  const now = state.audio ? state.audio.a + t : t;
+  const total = state.audio ? state.audio.buf.duration : T;
+  const p = total ? Math.min(1, now / total) : 0;
   const h = 4 * u;
   g.fillStyle = dim;
   g.beginPath(); g.roundRect(x, y, w, h, h / 2); g.fill();
@@ -269,9 +925,9 @@ function drawProgress(g, x, y, w, u, fg, dim, t, T) {
   g.fillStyle = dim;
   g.textBaseline = 'top';
   g.textAlign = 'left';
-  g.fillText(fmt(t), x, y + 14 * u);
+  g.fillText(fmt(now), x, y + 14 * u);
   g.textAlign = 'right';
-  g.fillText(fmt(T), x + w, y + 14 * u);
+  g.fillText(fmt(total), x + w, y + 14 * u);
 }
 
 function drawControls(g, cx, cy, u, fg) {
@@ -281,17 +937,14 @@ function drawControls(g, cx, cy, u, fg) {
     g.moveTo(x, cy - s); g.lineTo(x + dir * s * 1.2, cy); g.lineTo(x, cy + s); g.closePath(); g.fill();
   };
   const s = 9 * u;
-  // 이전
   const px = cx - 80 * u;
   g.fillRect(px - 12 * u, cy - s, 2.5 * u, s * 2);
   tri(px + 2 * u, -1, s);
   tri(px + 13 * u, -1, s);
-  // 다음
   const nx = cx + 80 * u;
   g.fillRect(nx + 10 * u, cy - s, 2.5 * u, s * 2);
   tri(nx - 2 * u, 1, s);
   tri(nx - 13 * u, 1, s);
-  // 일시정지(재생 중)
   const ps = 13 * u;
   g.fillRect(cx - ps * 0.6, cy - ps, ps * 0.42, ps * 2);
   g.fillRect(cx + ps * 0.18, cy - ps, ps * 0.42, ps * 2);
@@ -322,8 +975,36 @@ function render(g, W, t) {
   g.clearRect(0, 0, W, H);
   drawBackground(g, W, H, t);
 
-  if (state.mode === 'player') {
+  if (still && still.items.length > 1) {
+    // 문단 이미지: 위에 작은 아트와 제목, 아래를 가사가 채운다
+    const s = 76 * u, x = 40 * u, y = 40 * u;
+    if (state.mode === 'cd') {
+      drawDisc(g, x + s / 2, y + s / 2, s / 2, u * 0.4, t, T);
+    } else {
+      g.save();
+      g.shadowColor = 'rgba(0,0,0,0.3)';
+      g.shadowBlur = 16 * u;
+      g.shadowOffsetY = 6 * u;
+      g.beginPath(); g.roundRect(x, y, s, s, 8 * u); g.fillStyle = '#000'; g.fill();
+      g.restore();
+      g.save();
+      g.beginPath(); g.roundRect(x, y, s, s, 8 * u); g.clip();
+      drawArt(g, x, y, s, s, t);
+      g.restore();
+    }
+    const tx = x + s + 18 * u, tw = W - tx - 40 * u;
+    g.textAlign = 'left';
+    g.textBaseline = 'top';
+    g.fillStyle = fg;
+    g.font = `700 ${21 * u}px ${FONT}`;
+    g.fillText(fitText(g, $('title').value.trim(), tw), tx, y + 14 * u);
+    g.fillStyle = dim;
+    g.font = `500 ${15 * u}px ${FONT}`;
+    g.fillText(fitText(g, $('artist').value.trim(), tw), tx, y + 44 * u);
+    drawLyrics(g, x, 168 * u, H - 44 * u, W - 80 * u, u, fg, dim, t, { align: 'left', big: 1.35, top: true });
+  } else if (state.mode === 'player') {
     const s = 352 * u, x = (W - s) / 2, y = 44 * u;
+    drawGlow(g, W / 2, y + s / 2, s, false, u, t);
     g.save();
     g.shadowColor = 'rgba(0,0,0,0.35)';
     g.shadowBlur = 30 * u;
@@ -337,13 +1018,14 @@ function render(g, W, t) {
     g.restore();
 
     drawTitles(g, W / 2, 422 * u, s, u, fg, dim);
-    drawLyric(g, W / 2, 486 * u, s, 17 * u, fg, t);
+    drawLyrics(g, W / 2, 478 * u, 548 * u, s, u, fg, dim, t);
     drawProgress(g, x, 558 * u, s, u, fg, dim, t, T);
     drawControls(g, W / 2, 606 * u, u, fg);
   } else {
+    drawGlow(g, W / 2, 228 * u, 372 * u, true, u, t);
     drawDisc(g, W / 2, 228 * u, 186 * u, u, t, T);
     drawTitles(g, W / 2, 440 * u, 380 * u, u, fg, dim);
-    drawLyric(g, W / 2, 506 * u, 380 * u, 17 * u, fg, t);
+    drawLyrics(g, W / 2, 496 * u, 576 * u, 380 * u, u, fg, dim, t);
     drawProgress(g, (W - 352 * u) / 2, 586 * u, 352 * u, u, fg, dim, t, T);
   }
   g.restore();
@@ -421,26 +1103,47 @@ function sizeStage() {
   if (stage.width !== W || stage.height !== H) { stage.width = W; stage.height = H; }
 }
 
+// 트위터 GIF 한도(350장) 안에 들도록 초당 장 수를 낮춘다
+function gifPlan() {
+  const T = duration();
+  const want = parseInt($('fps').value, 10);
+  let fps = want;
+  for (const f of [25, 20, 10, 5]) {
+    if (f > want) continue;
+    fps = f;
+    if (Math.round(T * f) <= GIF_MAX_FRAMES) break;
+  }
+  const frames = Math.max(1, Math.round(T * fps));
+  return { T, fps, frames, lowered: fps < want, over: frames > GIF_MAX_FRAMES };
+}
+
 function updateInfo() {
   const T = duration();
   $('seek').max = T;
-  if (state.t > T) state.t = 0;
-  if (!state.exporting) {
-    const frames = Math.ceil(T * parseInt($('fps').value, 10));
-    $('status').textContent = `GIF ${fmt(T)} · ${frames}장`;
-  }
+  if (state.t > T && !state.tap) state.t = 0;
+  if (state.busy) return;
+  const p = gifPlan();
+  let s = `${fmt(T)} · GIF 초당 ${p.fps}장 ${p.frames}장`;
+  if (p.over) s += ' — 트위터 GIF는 350장까지라 구간을 줄여야 합니다';
+  else if (p.lowered) s += ' (트위터 350장 한도에 맞춰 낮춤)';
+  $('status').textContent = s;
 }
+
 
 let last = performance.now();
 function tick(now) {
   const dt = (now - last) / 1000;
   last = now;
   const T = duration();
-  if (state.playing && !state.exporting) state.t = (state.t + dt) % T;
+  if (state.playing && !state.busy) {
+    if (state.audio && src && actx) state.t = audioClock();
+    else state.t = (state.t + dt) % T;
+  }
   sizeStage();
   render(ctx, stage.width, state.t);
-  $('seek').value = state.t;
-  $('time').textContent = `${fmt(state.t)} / ${fmt(T)}`;
+  drawWave();
+  $('seek').value = Math.min(state.t, T);
+  $('time').textContent = `${fmt(Math.min(state.t, T))} / ${fmt(T)}`;
   requestAnimationFrame(tick);
 }
 
@@ -448,6 +1151,7 @@ function setPlaying(v) {
   state.playing = v;
   $('play').textContent = v ? '❚❚' : '▶';
   $('play').setAttribute('aria-label', v ? '일시정지' : '재생');
+  if (v) restartAudio(); else stopAudio();
 }
 
 // ---------- 저장 ----------
@@ -466,34 +1170,165 @@ function download(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-function saveStill(type) {
-  const W = exportWidth();
-  const c = document.createElement('canvas');
-  c.width = W; c.height = Math.round(W * 4 / 3);
-  const g = c.getContext('2d');
-  if (type === 'image/jpeg') { g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height); }
-  render(g, W, state.t);
-  c.toBlob((b) => download(b, fileBase() + (type === 'image/png' ? '.png' : '.jpg')), type, 0.92);
+// ---------- 이미지 저장: 줄(문단) × 이미지 조합 중에서 골라 저장 ----------
+function stillUnits() {
+  const lyr = parseLyrics();
+  const base = lyr.timed ? songBase(lyr) : 0;
+  const lines = lyr.lines.filter((l) => l.text);
+  const item = (l, i) => ({ text: l.text, ...noteOf(l.text), glitch: 0.35, at: i + 1 });
+  if (!lines.length) return [{ label: '', t: state.t, items: [] }];
+  if (state.unit === 'para') {
+    const groups = [];
+    for (const l of lines) {
+      const g = groups[groups.length - 1];
+      if (g && g.para === l.para) g.lines.push(l); else groups.push({ para: l.para, lines: [l] });
+    }
+    // 한 문단이 너무 길면 카드 한 장에 다 안 들어가서 4줄씩 나눈다
+    const chunks = [];
+    for (const g of groups) {
+      if (g.lines.length <= 6) chunks.push(g.lines);
+      else for (let i = 0; i < g.lines.length; i += 4) chunks.push(g.lines.slice(i, i + 4));
+    }
+    return chunks.map((ls, i) => ({ label: ls[0].text, t: ls[0].start - base, items: ls.map((l, j) => item(l, i * 50 + j)) }));
+  }
+  return lines.map((l, i) => ({ label: l.text, t: l.start - base, items: [item(l, i)] }));
 }
 
+let picks = [];
+function renderStill(g, W, pk) {
+  if (pk.now) { render(g, W, state.t); return; }
+  still = { img: pk.img, items: pk.unit.items };
+  try { render(g, W, pk.unit.t); } finally { still = null; }
+}
+
+let pickJob = 0;
+async function openPicker() {
+  $('picker').hidden = false;
+  const job = ++pickJob;
+  const grid = $('pickGrid');
+  grid.innerHTML = '';
+  const imgs = state.images.length ? state.images : [null];
+  picks = [{ now: true, label: '지금 장면', sel: false }];
+  stillUnits().forEach((unit, ui) => imgs.forEach((img, ii) => {
+    picks.push({ unit, img, label: unit.label, name: `${String(ui + 1).padStart(2, '0')}${imgs.length > 1 ? '-' + (ii + 1) : ''}`, sel: false });
+  }));
+  updatePickCount();
+  const TW = 180;
+  for (let i = 0; i < picks.length; i++) {
+    if (job !== pickJob) return;
+    const pk = picks[i];
+    const b = document.createElement('button');
+    b.className = 'pick';
+    b.setAttribute('aria-pressed', 'false');
+    const c = document.createElement('canvas');
+    c.width = TW; c.height = Math.round(TW * 4 / 3);
+    renderStill(c.getContext('2d'), TW, pk);
+    const mark = document.createElement('span');
+    mark.className = 'mark';
+    mark.textContent = '✓';
+    const cap = document.createElement('div');
+    cap.className = 'cap';
+    cap.textContent = pk.label || ' ';
+    b.append(c, mark, cap);
+    b.onclick = () => {
+      pk.sel = !pk.sel;
+      b.setAttribute('aria-pressed', String(pk.sel));
+      updatePickCount();
+    };
+    pk.el = b;
+    grid.append(b);
+    if (i % 6 === 5) await nextTick();
+  }
+}
+function updatePickCount() {
+  const n = picks.filter((p) => p.sel).length;
+  $('pickCount').textContent = n ? `${n}장 고름` : '';
+  $('pickSave').disabled = !n;
+  $('pickAll').textContent = n === picks.length ? '모두 풀기' : '모두 고르기';
+}
+async function savePicks() {
+  const type = $('stillFmt').value === 'jpg' ? 'image/jpeg' : 'image/png';
+  const ext = type === 'image/png' ? '.png' : '.jpg';
+  const W = exportWidth();
+  const chosen = picks.filter((p) => p.sel);
+  for (const pk of chosen) {
+    const c = document.createElement('canvas');
+    c.width = W; c.height = Math.round(W * 4 / 3);
+    const g = c.getContext('2d');
+    if (type === 'image/jpeg') { g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height); }
+    renderStill(g, W, pk);
+    const blob = await new Promise((r) => c.toBlob(r, type, 0.92));
+    download(blob, fileBase() + (pk.now ? '' : ' ' + pk.name) + ext);
+    // 여러 장을 한꺼번에 받으면 브라우저가 막을 수 있어 조금씩 띄운다
+    await new Promise((r) => setTimeout(r, 250));
+  }
+  $('status').textContent = `이미지 ${chosen.length}장 저장됨`;
+}
+
+// ---------- 발음 · 번역 ----------
+function renderNotes() {
+  if (!$('notesBox').open) return;
+  const list = $('noteList');
+  const seen = new Set();
+  const texts = parseLyrics().lines.map((l) => l.text).filter((t) => t && !seen.has(t) && seen.add(t));
+  list.innerHTML = '';
+  if (!texts.length) {
+    list.innerHTML = '<span class="hint">가사를 먼저 넣어 주세요</span>';
+    return;
+  }
+  for (const text of texts) {
+    const row = document.createElement('div');
+    row.className = 'note-row';
+    const src = document.createElement('span');
+    src.className = 'src';
+    src.textContent = text;
+    const mk = (key, ph) => {
+      const inp = document.createElement('input');
+      inp.type = 'text';
+      inp.placeholder = ph;
+      inp.setAttribute('aria-label', `${text} ${ph}`);
+      inp.value = (notes[text] && notes[text][key]) || '';
+      inp.addEventListener('input', () => {
+        notes[text] = { ...(notes[text] || {}), [key]: inp.value };
+        if (!notes[text].p && !notes[text].tr) delete notes[text];
+        saveSettings();
+      });
+      return inp;
+    };
+    row.append(src, mk('p', '발음'), mk('tr', '번역'));
+    list.append(row);
+  }
+}
+
+const SAVE_BUTTONS = { saveMp4: 'MP4 저장', saveGif: 'GIF 저장' };
+function beginBusy(which) {
+  state.busy = true;
+  state.cancel = false;
+  stopAudio();
+  if (state.tap) endTap('');
+  $(which).textContent = '멈추기';
+  for (const id of ['saveMp4', 'saveGif', 'saveStill']) if (id !== which) $(id).disabled = true;
+}
+function endBusy(which) {
+  state.busy = false;
+  $(which).textContent = SAVE_BUTTONS[which];
+  for (const id of ['saveMp4', 'saveGif', 'saveStill']) $(id).disabled = false;
+  restartAudio();
+}
+const nextTick = () => new Promise((r) => setTimeout(r, 0));
+
 async function saveGif() {
-  if (state.exporting) { state.cancel = true; return; }
+  if (state.busy) { state.cancel = true; return; }
   const { GIFEncoder, quantize, applyPalette } = window.gifenc;
   const W = exportWidth(), H = Math.round(W * 4 / 3);
-  const fps = parseInt($('fps').value, 10);
-  const T = duration();
-  const frames = Math.max(1, Math.round(T * fps));
+  const { T, fps, frames } = gifPlan();
   const delay = 1000 / fps;
 
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
   const g = c.getContext('2d', { willReadFrequently: true });
   const gif = GIFEncoder();
-
-  state.exporting = true;
-  state.cancel = false;
-  $('saveGif').textContent = '멈추기';
-  for (const id of ['savePng', 'saveJpg']) $(id).disabled = true;
+  beginBusy('saveGif');
 
   // 앞 장과 똑같은 장면은 합쳐서 보이는 시간만 늘린다
   let prev = null, prevDelay = 0;
@@ -518,30 +1353,124 @@ async function saveGif() {
       }
       if (i % 2 === 0) {
         $('status').textContent = `GIF 만드는 중 ${Math.round((i / frames) * 100)}%`;
-        await new Promise((r) => setTimeout(r, 0));
+        await nextTick();
       }
     }
     flush();
     gif.finish();
     const blob = new Blob([gif.bytes()], { type: 'image/gif' });
     download(blob, fileBase() + '.gif');
-    $('status').textContent = `GIF 저장됨 · ${(blob.size / 1024 / 1024).toFixed(1)}MB`;
+    const mb = blob.size / 1024 / 1024;
+    $('status').textContent = `GIF 저장됨 · ${mb.toFixed(1)}MB`
+      + (mb > GIF_MAX_MB ? ` — 트위터 GIF는 ${GIF_MAX_MB}MB까지라 크기나 초당 장 수를 줄여야 합니다` : '');
   } finally {
-    state.exporting = false;
-    $('saveGif').textContent = 'GIF 저장';
-    for (const id of ['savePng', 'saveJpg']) $(id).disabled = false;
+    endBusy('saveGif');
   }
 }
 
 function sameFrame(a, b) {
   const x = new Uint32Array(a.buffer), y = new Uint32Array(b.buffer);
-  for (let i = 0; i < x.length; i += 7) if (x[i] !== y[i]) return false;
   for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return false;
   return true;
 }
 
+// 장면을 한 장씩 그려 H.264로, 노래 구간은 AAC로 넣는다
+async function saveMp4() {
+  if (state.busy) { state.cancel = true; return; }
+  if (!window.VideoEncoder || !window.Mp4Muxer) {
+    $('status').textContent = '이 브라우저는 MP4 저장을 못 합니다. 크롬이나 엣지에서 열어 주세요';
+    return;
+  }
+  const W = exportWidth(), H = Math.round(W * 4 / 3);
+  const T = duration();
+  const frames = Math.max(1, Math.round(T * MP4_FPS));
+  const au = state.audio;
+
+  const vcfg = { codec: 'avc1.640028', width: W, height: H, bitrate: 8e6, framerate: MP4_FPS };
+  const acfg = au && { codec: 'mp4a.40.2', sampleRate: au.buf.sampleRate, numberOfChannels: Math.min(2, au.buf.numberOfChannels), bitrate: 192000 };
+  if (!(await VideoEncoder.isConfigSupported(vcfg)).supported
+    || (acfg && !(await AudioEncoder.isConfigSupported(acfg)).supported)) {
+    $('status').textContent = '이 컴퓨터에서는 MP4 인코딩을 쓸 수 없습니다';
+    return;
+  }
+
+  beginBusy('saveMp4');
+  let failed = null;
+  try {
+    const { Muxer, ArrayBufferTarget } = window.Mp4Muxer;
+    const muxer = new Muxer({
+      target: new ArrayBufferTarget(),
+      video: { codec: 'avc', width: W, height: H, frameRate: MP4_FPS },
+      audio: acfg ? { codec: 'aac', sampleRate: acfg.sampleRate, numberOfChannels: acfg.numberOfChannels } : undefined,
+      fastStart: 'in-memory',
+      firstTimestampBehavior: 'offset',
+    });
+
+    const ve = new VideoEncoder({ output: (ch, meta) => muxer.addVideoChunk(ch, meta), error: (e) => { failed = e; } });
+    ve.configure(vcfg);
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const g = c.getContext('2d');
+    for (let i = 0; i < frames; i++) {
+      if (state.cancel) { $('status').textContent = 'MP4 저장을 멈췄습니다'; ve.close(); return; }
+      if (failed) throw failed;
+      render(g, W, i / MP4_FPS);
+      const vf = new VideoFrame(c, { timestamp: Math.round((i * 1e6) / MP4_FPS), duration: Math.round(1e6 / MP4_FPS) });
+      ve.encode(vf, { keyFrame: i % (MP4_FPS * 2) === 0 });
+      vf.close();
+      if (ve.encodeQueueSize > 8 || i % 4 === 0) {
+        $('status').textContent = `MP4 만드는 중 ${Math.round((i / frames) * (acfg ? 90 : 100))}%`;
+        while (ve.encodeQueueSize > 8) await new Promise((r) => setTimeout(r, 5));
+        await nextTick();
+      }
+    }
+    await ve.flush();
+    ve.close();
+
+    if (acfg) {
+      const ae = new AudioEncoder({ output: (ch, meta) => muxer.addAudioChunk(ch, meta), error: (e) => { failed = e; } });
+      ae.configure(acfg);
+      const sr = acfg.sampleRate, nch = acfg.numberOfChannels;
+      const s0 = Math.floor(au.a * sr), total = Math.floor(T * sr);
+      const fadeIn = Math.floor(0.05 * sr), fadeOut = Math.floor(0.4 * sr);
+      const chans = [];
+      for (let k = 0; k < nch; k++) chans.push(au.buf.getChannelData(k));
+      const CH = 4096;
+      for (let off = 0; off < total; off += CH) {
+        if (failed) throw failed;
+        const n = Math.min(CH, total - off);
+        const data = new Float32Array(n * nch);
+        for (let k = 0; k < nch; k++) {
+          const src = chans[k];
+          for (let j = 0; j < n; j++) {
+            const pos = off + j;
+            // 구간 앞뒤가 툭 끊기지 않게 살짝 줄였다 키운다
+            const gain = Math.min(1, pos / fadeIn, (total - pos) / fadeOut);
+            data[k * n + j] = (src[s0 + pos] || 0) * gain;
+          }
+        }
+        const ad = new AudioData({ format: 'f32-planar', sampleRate: sr, numberOfFrames: n, numberOfChannels: nch, timestamp: Math.round((off * 1e6) / sr), data });
+        ae.encode(ad);
+        ad.close();
+      }
+      await ae.flush();
+      ae.close();
+    }
+    if (failed) throw failed;
+
+    muxer.finalize();
+    const blob = new Blob([muxer.target.buffer], { type: 'video/mp4' });
+    download(blob, fileBase() + '.mp4');
+    $('status').textContent = `MP4 저장됨 · ${(blob.size / 1024 / 1024).toFixed(1)}MB · ${fmt(T)}`;
+  } catch (e) {
+    $('status').textContent = 'MP4를 만들지 못했습니다: ' + (e && e.message ? e.message : e);
+  } finally {
+    endBusy('saveMp4');
+  }
+}
+
 // ---------- 연결 ----------
-for (const id of ['mode', 'bgMode']) {
+for (const id of ['mode', 'bgMode', 'fx']) {
   $(id).addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -550,6 +1479,89 @@ for (const id of ['mode', 'bgMode']) {
   });
 }
 for (const f of FIELDS) $(f).addEventListener('input', () => { updateInfo(); saveSettings(); });
+$('glowOn').addEventListener('change', saveSettings);
+$('imgGlitch').addEventListener('change', saveSettings);
+
+// 그라디언트 맵: 직접 고르기일 때만 색 칸을 보인다
+function syncGmap() {
+  const custom = $('gmap').value === 'custom';
+  $('gmA').hidden = $('gmB').hidden = !custom;
+}
+$('gmap').addEventListener('change', syncGmap);
+
+// 글꼴: 캔버스는 글꼴이 다 받아진 뒤에야 그 글꼴로 그린다
+async function applyFont() {
+  const name = $('font').value;
+  FONT = `"${name}", ${BASE_FONT}`;
+  try {
+    await Promise.all(['500', '600', '700'].map((w) => document.fonts.load(`${w} 20px "${name}"`, '가A')));
+  } catch (e) {}
+}
+$('font').addEventListener('change', applyFont);
+
+// ---------- 이미지 위치·확대: 미리보기 위에서 끌기·휠 ----------
+function artRect() {
+  const u = stage.width / 480;
+  if (state.mode === 'player') { const s = 352 * u; return { x: (stage.width - s) / 2, y: 44 * u, w: s, h: s }; }
+  const R = 186 * u;
+  return { x: stage.width / 2 - R, y: 228 * u - R, w: R * 2, h: R * 2 };
+}
+function stagePoint(e) {
+  const r = stage.getBoundingClientRect();
+  const k = stage.width / r.width;
+  return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k, k };
+}
+function hitArt(e) {
+  const p = stagePoint(e), a = artRect();
+  return p.x >= a.x && p.x <= a.x + a.w && p.y >= a.y && p.y <= a.y + a.h;
+}
+function currentImage() { return imageAt(state.t).a; }
+function dropFitCache(it) {
+  for (const k of Object.keys(it.cache)) if (k.startsWith('glow')) delete it.cache[k];
+}
+let pan = null;
+stage.addEventListener('pointermove', (e) => {
+  if (!pan) { stage.classList.toggle('can-pan', !!currentImage() && hitArt(e)); return; }
+  const it = pan.it, a = artRect();
+  const img = srcOf(it);
+  const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
+  const s = Math.max(a.w / iw, a.h / ih) * (it.zoom || 1);
+  const ox = iw * s - a.w, oy = ih * s - a.h;
+  const p = stagePoint(e);
+  // CD는 돌고 있어서 끈 방향과 그림이 움직이는 방향이 어긋날 수 있다
+  if (ox > 0) it.fx = Math.max(0, Math.min(1, pan.fx - (p.x - pan.x) / ox));
+  if (oy > 0) it.fy = Math.max(0, Math.min(1, pan.fy - (p.y - pan.y) / oy));
+});
+stage.addEventListener('pointerdown', (e) => {
+  const it = currentImage();
+  if (!it || !hitArt(e)) return;
+  stage.setPointerCapture(e.pointerId);
+  const p = stagePoint(e);
+  pan = { it, x: p.x, y: p.y, fx: it.fx ?? 0.5, fy: it.fy ?? 0.5 };
+  stage.classList.add('panning');
+});
+const endPan = () => {
+  if (!pan) return;
+  dropFitCache(pan.it);
+  pan = null;
+  stage.classList.remove('panning');
+};
+stage.addEventListener('pointerup', endPan);
+stage.addEventListener('pointercancel', endPan);
+stage.addEventListener('wheel', (e) => {
+  const it = currentImage();
+  if (!it || !hitArt(e)) return;
+  e.preventDefault();
+  it.zoom = Math.max(1, Math.min(4, (it.zoom || 1) * (e.deltaY < 0 ? 1.08 : 1 / 1.08)));
+  dropFitCache(it);
+}, { passive: false });
+stage.addEventListener('dblclick', (e) => {
+  const it = currentImage();
+  if (!it || !hitArt(e)) return;
+  it.fx = it.fy = 0.5;
+  it.zoom = 1;
+  dropFitCache(it);
+});
 $('bgColor').addEventListener('input', () => setSeg('bgMode', 'solid'));
 
 $('file').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
@@ -562,12 +1574,48 @@ document.addEventListener('paste', (e) => {
   if (files.length) addFiles(files);
 });
 
+$('audioFile').addEventListener('change', (e) => { if (e.target.files[0]) loadAudio(e.target.files[0]); e.target.value = ''; });
+const audioDrop = $('audioDrop');
+audioDrop.addEventListener('dragover', (e) => { e.preventDefault(); audioDrop.classList.add('over'); });
+audioDrop.addEventListener('dragleave', () => audioDrop.classList.remove('over'));
+audioDrop.addEventListener('drop', (e) => {
+  e.preventDefault();
+  audioDrop.classList.remove('over');
+  const f = [...e.dataTransfer.files].find((x) => x.type.startsWith('audio/'));
+  if (f) loadAudio(f);
+});
+$('audioRemove').addEventListener('click', removeAudio);
+
+$('findLyrics').addEventListener('click', findLyrics);
+$('tap').addEventListener('click', () => (state.tap ? tapNext() : startTap()));
+
 $('play').addEventListener('click', () => setPlaying(!state.playing));
-$('seek').addEventListener('input', (e) => { setPlaying(false); state.t = parseFloat(e.target.value); });
+$('seek').addEventListener('input', (e) => {
+  state.t = parseFloat(e.target.value);
+  if (state.playing) restartAudio();
+});
+$('saveMp4').addEventListener('click', saveMp4);
 $('saveGif').addEventListener('click', saveGif);
-$('savePng').addEventListener('click', () => saveStill('image/png'));
-$('saveJpg').addEventListener('click', () => saveStill('image/jpeg'));
+$('saveStill').addEventListener('click', openPicker);
+$('pickClose').addEventListener('click', () => { pickJob++; $('picker').hidden = true; });
+$('pickSave').addEventListener('click', savePicks);
+$('pickAll').addEventListener('click', () => {
+  const all = !picks.every((p) => p.sel);
+  for (const p of picks) { p.sel = all; p.el && p.el.setAttribute('aria-pressed', String(all)); }
+  updatePickCount();
+});
+$('unit').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  setSeg('unit', b.dataset.v);
+  openPicker();
+});
+$('notesBox').addEventListener('toggle', renderNotes);
+let notesTimer = 0;
+$('lyrics').addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(renderNotes, 400); });
 
 loadSettings();
+syncGmap();
+applyFont();
 updateInfo();
 requestAnimationFrame(tick);
