@@ -84,7 +84,15 @@
   .file-row button { border: 0; background: none; color: var(--dim); cursor: pointer; font-size: 15px; padding: 0 4px; }
   .msg { font-size: 12px; color: var(--dim); }
   .msg:empty { display: none; }
-  .row[hidden] { display: none; }
+  .row[hidden], .check[hidden] { display: none; }
+  .st-list { display: flex; flex-direction: column; gap: 12px; }
+  .st-list:empty { display: none; }
+  .st-row { display: grid; grid-template-columns: 44px 1fr auto; gap: 6px 8px; align-items: center; }
+  .st-row img { width: 44px; height: 44px; object-fit: contain; background: var(--soft); border-radius: 6px; grid-row: span 3; align-self: start; }
+  .st-row select { padding: 6px 8px; }
+  .st-x { border: 0; background: none; color: var(--dim); cursor: pointer; font-size: 15px; padding: 0 4px; }
+  .st-ctrl { grid-column: 2 / -1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
+  .st-ctrl input { flex: 1; accent-color: var(--text); }
   .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   .check input { accent-color: var(--text); width: 16px; height: 16px; margin: 0; }
   .btn.tapping { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
@@ -147,6 +155,7 @@
       <button data-v="player" aria-pressed="true">음악 플레이어</button>
       <button data-v="cd" aria-pressed="false">CD 플레이어</button>
     </div>
+    <label class="check" id="spinRow" hidden><input type="checkbox" id="spin" checked>CD 돌리기</label>
   </section>
 
   <section>
@@ -159,12 +168,30 @@
       <span class="hint" style="flex:1">그라디언트 맵</span>
       <select id="gmap" style="width:150px">
         <option value="">없음</option>
-        <option value="dawn">새벽</option>
-        <option value="sea">바다</option>
-        <option value="sunset">노을</option>
-        <option value="mono">흑백</option>
-        <option value="sepia">세피아</option>
-        <option value="neon">형광</option>
+        <optgroup label="기본">
+          <option value="dawn">새벽</option>
+          <option value="sea">바다</option>
+          <option value="sunset">노을</option>
+          <option value="mono">흑백</option>
+          <option value="sepia">세피아</option>
+          <option value="neon">형광</option>
+        </optgroup>
+        <optgroup label="듀오톤">
+          <option value="duoPink">핑크 · 남색</option>
+          <option value="duoBlueOrange">파랑 · 주황</option>
+          <option value="duoRedCyan">빨강 · 청록</option>
+          <option value="mint">민트</option>
+        </optgroup>
+        <optgroup label="페이드 · 빈티지">
+          <option value="fadeLight">라이트 페이드</option>
+          <option value="fadeDark">다크 페이드</option>
+          <option value="vintage">빈티지 흑백</option>
+          <option value="selenium">차가운 흑백</option>
+        </optgroup>
+        <optgroup label="비비드">
+          <option value="hyper">하이퍼컬러</option>
+          <option value="dream">몽환</option>
+        </optgroup>
         <option value="custom">직접 고르기</option>
       </select>
       <input type="color" id="gmA" value="#1a1446" aria-label="어두운 쪽 색" hidden>
@@ -183,6 +210,13 @@
       <label class="check"><input type="checkbox" id="imgGlitch">글리치</label>
       <label class="check"><input type="checkbox" id="bokeh">보케</label>
     </div>
+    <label class="check"><input type="checkbox" id="beatSync">글리치를 노래 박자에 맞추기</label>
+  </section>
+
+  <section>
+    <span class="label">스티커</span>
+    <div class="st-list" id="stickerList"></div>
+    <label class="drop" id="stickerDrop">스티커 추가<input type="file" id="stickerFile" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden></label>
   </section>
 
   <section>
@@ -210,7 +244,7 @@
       <button class="btn" id="tap" disabled>박자 찍기</button>
     </div>
     <div class="msg" id="lyricMsg"></div>
-    <details class="notes" id="notesBox"><summary>발음 · 번역</summary><div class="note-list" id="noteList"></div></details>
+    <details class="notes" id="notesBox"><summary>줄마다 설정</summary><div class="note-list" id="noteList"></div></details>
     <div class="row">
       <span class="hint" style="flex:1">효과</span>
       <div class="seg" id="fx" style="width:180px">
@@ -224,6 +258,7 @@
       <label class="check"><input type="checkbox" id="gPron">발음</label>
       <label class="check"><input type="checkbox" id="gTrans">번역</label>
     </div>
+    <label class="check"><input type="checkbox" id="nextLine">다음 줄 보이기</label>
     <div class="row"><span class="hint" style="flex:1">박자 없는 줄은 한 줄당</span><input type="number" id="lineSec" min="0.5" step="0.5" value="3"><span class="hint">초</span></div>
     <div class="row"><span class="hint" style="flex:1">가사 늦추기</span><input type="number" id="shift" step="0.1" value="0"><span class="hint">초</span></div>
   </section>
@@ -247,6 +282,22 @@
       <option value="Song Myung">송명</option>
       <option value="Nanum Pen Script">나눔손글씨 펜</option>
     </select>
+  </section>
+
+  <section>
+    <span class="label">배치</span>
+    <div class="row">
+      <span class="hint" style="flex:1">글자 정렬</span>
+      <div class="seg" id="align" style="width:210px">
+        <button data-v="left">왼쪽</button>
+        <button data-v="center">가운데</button>
+        <button data-v="right">오른쪽</button>
+      </div>
+    </div>
+    <div class="row">
+      <span class="hint" style="flex:1; white-space:normal">미리보기에서 제목·가사·스티커를 끌어 옮기기</span>
+      <button class="btn" id="resetPos">위치 되돌리기</button>
+    </div>
   </section>
 
   <section>

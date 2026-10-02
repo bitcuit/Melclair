@@ -1,10 +1,10 @@
 {
-  "at": "2026-10-02 17:40",
+  "at": "2026-10-02 18:40",
   "by": "claude-code",
-  "doing": "음악 플레이어 제목을 아트 아래쪽에 얹고, 가사를 크게 왼쪽 정렬, 적어 둔 가사에만 시간 붙이기",
+  "doing": "글자 정렬·위치 옮기기, 스티커와 효과, 줄별·박자 맞춤 글리치, CD 멈춤 추가",
   "where": "app.js render() / drawLyrics() / drawArt() / saveMp4() / openPicker()",
   "state": "미검증",
-  "next": "만든 MP4를 실제 트위터에 올려 보고 받아지는지 확인",
+  "next": "스티커를 넣은 MP4를 트위터에 올려 보고 받아지는지 확인",
   "blocked": "",
   "session": { "id": "8976c071-774d-442f-9659-8d1393cee662", "title": "", "tool": "claude-code" }
 }
