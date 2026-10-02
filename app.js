@@ -1350,7 +1350,7 @@ function drawControls(g, cx, cy, u, fg) {
 function defaultBoxes(W) {
   const u = W / 480;
   return state.mode === 'player'
-    ? { title: { x: 84 * u, y: 332 * u, w: 312 * u, h: 50 * u }, lyric: { x: 64 * u, y: 404 * u, w: 352 * u, h: 146 * u } }
+    ? { title: { x: 84 * u, y: 332 * u, w: 312 * u, h: 50 * u }, lyric: { x: 64 * u, y: 404 * u, w: 352 * u, h: 122 * u } }
     : { title: { x: 50 * u, y: 440 * u, w: 380 * u, h: 50 * u }, lyric: { x: 50 * u, y: 496 * u, w: 380 * u, h: 80 * u } };
 }
 const EDGE = 16; // 스티커가 움직일 수 있는 영역: 카드 가장자리에서 이만큼 안쪽 (u 단위)
@@ -1473,8 +1473,9 @@ function render(g, W, t) {
     drawTitleBlock(g, B.title, tm, u, fg, dim, onArt);
     drawLyrics(g, B.lyric.ax, B.lyric.y, B.lyric.y + B.lyric.h, B.lyric.w, u, fg, dim, t,
       { align: B.lyric.al, size: 21, next: $('nextLine').checked });
-    drawProgress(g, x, 558 * u, s, u, fg, dim, t, T);
-    drawControls(g, W / 2, 606 * u, u, fg);
+    // 아래 여백을 위 여백(44)과 맞춘다
+    drawProgress(g, x, 534 * u, s, u, fg, dim, t, T);
+    drawControls(g, W / 2, 583 * u, u, fg);
   } else {
     drawGlow(g, W / 2, 228 * u, 372 * u, true, u, t);
     drawDisc(g, W / 2, 228 * u, 186 * u, u, t, T);
