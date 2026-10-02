@@ -299,7 +299,8 @@ function imageSchedule() {
   return val;
 }
 
-// 가사 따라: 줄이 바뀔 때 다음 이미지. 줄이 이미지보다 적으면 한 줄을 정수 초로 나눠 여러 장을 넣고
+// 가사 따라: 줄이 바뀔 때 이미지가 바뀐다. 이미지마다 한 번씩 나온다.
+// 줄이 많으면 줄을 고르게 묶고, 적으면 한 줄을 정수 초로 나눠 여러 장을 넣고
 // 남는 시간(소수점 포함)은 그 줄의 마지막 장이 갖는다
 function lyricSchedule(useOverrides = true) {
   const imgs = state.images;
@@ -321,7 +322,14 @@ function lyricSchedule(useOverrides = true) {
 
   const segs = [];
   if (lines.length >= n) {
-    lines.forEach((l, i) => segs.push({ start: l.start, end: l.end, it: imgs[i % n] }));
+    // 줄이 이미지보다 많으면 줄을 이미지 수만큼 고르게 묶는다. 남는 줄은 앞 이미지부터 하나씩 더
+    const per = Math.floor(lines.length / n), extra = lines.length % n;
+    let li = 0;
+    imgs.forEach((it, k) => {
+      const cnt = per + (k < extra ? 1 : 0);
+      segs.push({ start: lines[li].start, end: lines[li + cnt - 1].end, it });
+      li += cnt;
+    });
   } else {
     const per = Math.floor(n / lines.length), extra = n % lines.length;
     let k = 0;
