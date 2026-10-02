@@ -149,12 +149,14 @@ function lyricAt(t) {
   const lyr = parseLyrics();
   const shift = parseFloat($('shift').value) || 0;
   const at = (lyr.timed ? songBase(lyr) : 0) + t - shift;
-  for (const l of lyr.lines) {
+  for (let i = 0; i < lyr.lines.length; i++) {
+    const l = lyr.lines[i];
     if (at >= l.start && at < l.end) {
       const dur = l.end - l.start;
       const fade = Math.min(FADE, dur / 3);
       const alpha = Math.min(1, (at - l.start) / fade, (l.end - at) / fade);
-      return { text: l.text, alpha: Math.max(0, alpha), since: at - l.start, at, ...noteOf(l.text) };
+      const nx = lyr.lines.slice(i + 1).find((x) => x.text);
+      return { text: l.text, alpha: Math.max(0, alpha), since: at - l.start, at, next: nx ? nx.text : '', ...noteOf(l.text) };
     }
   }
   return null;
@@ -544,10 +546,15 @@ async function findLyrics() {
     const D = state.audio ? state.audio.buf.duration : null;
     const near = (x) => (D ? Math.abs((x.duration || 0) - D) : 0);
     const synced = list.filter((x) => x.syncedLyrics).sort((x, y) => near(x) - near(y));
-    if (synced.length) {
+    const mine = myLines();
+    const warnLen = synced.length && D && near(synced[0]) > 3 ? ' — 노래 파일과 길이가 달라 박자가 어긋날 수 있습니다' : '';
+    if (synced.length && mine.texts.length) {
+      msg.textContent = stampMine(mine, synced[0].syncedLyrics) + warnLen;
+    } else if (synced.length) {
       $('lyrics').value = synced[0].syncedLyrics;
-      msg.textContent = `${synced[0].artistName} · ${synced[0].trackName}`
-        + (D && near(synced[0]) > 3 ? ' — 노래 파일과 길이가 달라 박자가 어긋날 수 있습니다' : '');
+      msg.textContent = `${synced[0].artistName} · ${synced[0].trackName}` + warnLen;
+    } else if (mine.texts.length) {
+      msg.textContent = list.length ? '박자 있는 가사가 없습니다. 박자 찍기로 맞춰 주세요' : '가사를 못 찾았습니다. 제목·가수 철자를 확인해 주세요';
     } else {
       const plain = list.find((x) => x.plainLyrics);
       if (plain) {
@@ -565,15 +572,60 @@ async function findLyrics() {
   }
 }
 
-// ---------- 박자 찍기 ----------
-// 구간 시작부터 노래를 틀고, 스페이스를 누를 때마다 다음 줄의 시작 시각을 적는다.
-function startTap() {
-  // 빈 줄(문단 나눔)은 기억해 뒀다가 결과에 다시 넣는다
+// 가사 칸에 적힌 줄(시간표는 떼고). 빈 줄(문단 나눔) 자리는 기억해 둔다
+function myLines() {
   const texts = [], breaks = new Set();
   for (const r of $('lyrics').value.split('\n')) {
     const s = r.replace(/^(\s*\[\d+:\d+(?:\.\d+)?\])+/, '').replace(/^\s*\[\d+(?:\.\d+)?\]/, '').trim();
     if (s) texts.push(s); else if (texts.length) breaks.add(texts.length);
   }
+  return { texts, breaks };
+}
+
+// 적어 둔 줄에만 받아 온 가사의 시각을 붙인다. 노래가 있으면 구간도 그 부분으로 맞춘다
+function stampMine(mine, lrc) {
+  const norm = (s) => s.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
+  const src = [];
+  for (const raw of lrc.split('\n')) {
+    const m = raw.match(/^\s*\[(\d+):(\d+(?:\.\d+)?)\]\s*(.*)$/);
+    if (m) src.push({ start: parseInt(m[1], 10) * 60 + parseFloat(m[2]), key: norm(m[3]) });
+  }
+  const same = (a, b) => a && b && (a === b || (a.length >= 4 && b.includes(a)) || (b.length >= 4 && a.includes(b)));
+  const keys = mine.texts.map(norm);
+  // 후렴처럼 같은 줄이 여러 번 나오면, 이어지는 줄이 가장 많이 맞는 자리를 고른다
+  let best = null;
+  for (let from = 0; from < src.length; from++) {
+    if (!same(keys[0], src[from].key) && from > 0) continue;
+    const hits = [];
+    let j = from;
+    for (const k of keys) {
+      let f = -1;
+      for (let q = j; q < src.length; q++) if (same(k, src[q].key)) { f = q; break; }
+      hits.push(f);
+      if (f >= 0) j = f + 1;
+    }
+    const n = hits.filter((h) => h >= 0).length;
+    if (!best || n > best.n) best = { n, hits };
+  }
+  const hits = best ? best.hits : keys.map(() => -1);
+  $('lyrics').value = mine.texts.map((s, i) => (mine.breaks.has(i) ? '\n' : '') + (hits[i] >= 0 ? fmtLrc(src[hits[i]].start) + ' ' : '') + s).join('\n');
+
+  const found = hits.filter((h) => h >= 0);
+  if (found.length && state.audio) {
+    const first = src[found[0]].start;
+    const lastIdx = found[found.length - 1];
+    const end = lastIdx + 1 < src.length ? src[lastIdx + 1].start : src[lastIdx].start + num('lineSec', 3);
+    setSegment(first - 0.3, end, true);
+  }
+  const miss = mine.texts.filter((_, i) => hits[i] < 0);
+  if (!miss.length) return `${mine.texts.length}줄 모두 시간을 붙였습니다`;
+  return `${mine.texts.length}줄 중 ${found.length}줄만 맞췄습니다. 못 맞춘 줄(시간 없음)은 안 보입니다: ${miss.slice(0, 2).join(' / ')}${miss.length > 2 ? ' …' : ''}`;
+}
+
+// ---------- 박자 찍기 ----------
+// 구간 시작부터 노래를 틀고, 스페이스를 누를 때마다 다음 줄의 시작 시각을 적는다.
+function startTap() {
+  const { texts, breaks } = myLines();
   if (!texts.length) { $('lyricMsg').textContent = '가사를 먼저 넣어 주세요'; return; }
   document.activeElement?.blur();
   state.tap = { texts, breaks, stamps: [] };
@@ -806,7 +858,8 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
   let layout, k = 1;
   for (; k >= 0.4; k -= 0.05) {
     const one = items.length === 1;
-    const S = { main: 17 * u * k * big, pron: 11.5 * u * k * big, trans: 13 * u * k * big };
+    const base = opt.size || 17;
+    const S = { main: base * u * k * big, pron: base * 0.62 * u * k * big, trans: base * 0.72 * u * k * big };
     let h = 0;
     layout = items.map((it, i) => {
       g.font = `600 ${S.main}px ${FONT}`;
@@ -824,6 +877,12 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
     if (h <= y1 - y0) break;
   }
   const S = layout.S;
+  // 다음 줄: 자리가 남을 때만 흐리게 한 줄
+  let next = '';
+  if (opt.next && !still && items[0].next && layout.h + S.main * 1.5 <= y1 - y0) {
+    g.font = `600 ${S.main}px ${FONT}`;
+    next = fitText(g, items[0].next, maxW);
+  }
   let y = opt.top ? y0 : y0 + Math.max(0, (y1 - y0 - layout.h) / 2);
   for (const L of layout) {
     const alpha = still ? 1 : L.it.alpha;
@@ -860,6 +919,12 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
       for (const s of L.trans) { g.fillText(s, cx, y); y += S.trans * 1.4; }
     }
     y += 10 * u * k * big;
+  }
+  if (next) {
+    g.globalAlpha = 0.32;
+    g.fillStyle = fg;
+    g.font = `600 ${S.main}px ${FONT}`;
+    g.fillText(next, cx, y - 4 * u);
   }
   g.globalAlpha = 1;
 }
@@ -1015,17 +1080,36 @@ function render(g, W, t) {
     g.save();
     g.beginPath(); g.roundRect(x, y, s, s, 14 * u); g.clip();
     drawArt(g, x, y, s, s, t);
+    // 아트 아래쪽만 살짝 어둡게 깔고 제목·가수를 얹는다
+    const dimH = 104 * u;
+    const grad = g.createLinearGradient(0, y + s - dimH, 0, y + s);
+    grad.addColorStop(0, 'rgba(0,0,0,0)');
+    grad.addColorStop(1, 'rgba(0,0,0,0.62)');
+    g.fillStyle = grad;
+    g.fillRect(x, y + s - dimH, s, dimH);
     g.restore();
+    const tw = s - 40 * u;
+    g.textAlign = 'left';
+    g.textBaseline = 'alphabetic';
+    g.shadowColor = 'rgba(0,0,0,0.35)';
+    g.shadowBlur = 8 * u;
+    g.fillStyle = '#fff';
+    g.font = `700 ${22 * u}px ${FONT}`;
+    g.fillText(fitText(g, $('title').value.trim(), tw), x + 20 * u, y + s - 44 * u);
+    g.fillStyle = 'rgba(255,255,255,0.78)';
+    g.font = `500 ${15 * u}px ${FONT}`;
+    g.fillText(fitText(g, $('artist').value.trim(), tw), x + 20 * u, y + s - 20 * u);
+    g.shadowColor = 'transparent';
+    g.shadowBlur = 0;
 
-    drawTitles(g, W / 2, 422 * u, s, u, fg, dim);
-    drawLyrics(g, W / 2, 478 * u, 548 * u, s, u, fg, dim, t);
+    drawLyrics(g, x, 422 * u, 546 * u, s, u, fg, dim, t, { align: 'left', size: 21, top: true, next: true });
     drawProgress(g, x, 558 * u, s, u, fg, dim, t, T);
     drawControls(g, W / 2, 606 * u, u, fg);
   } else {
     drawGlow(g, W / 2, 228 * u, 372 * u, true, u, t);
     drawDisc(g, W / 2, 228 * u, 186 * u, u, t, T);
     drawTitles(g, W / 2, 440 * u, 380 * u, u, fg, dim);
-    drawLyrics(g, W / 2, 496 * u, 576 * u, 380 * u, u, fg, dim, t);
+    drawLyrics(g, W / 2, 496 * u, 576 * u, 380 * u, u, fg, dim, t, { size: 19 });
     drawProgress(g, (W - 352 * u) / 2, 586 * u, 352 * u, u, fg, dim, t, T);
   }
   g.restore();
