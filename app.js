@@ -1492,6 +1492,19 @@ async function addStickers(files) {
   renderStickers();
 }
 
+// 스티커가 (회전한 모양 그대로) 카드 안쪽 영역에 다 들어가도록 가운데 자리를 막는다.
+// 영역보다 크면 그 방향으로는 가운데에 둔다
+function clampSticker(st) {
+  const W = 480, H = 640, m = EDGE;
+  const { w, h } = stickerSize(st, W);
+  const a = (st.rot * Math.PI) / 180;
+  const hw = Math.abs((w / 2) * Math.cos(a)) + Math.abs((h / 2) * Math.sin(a));
+  const hh = Math.abs((w / 2) * Math.sin(a)) + Math.abs((h / 2) * Math.cos(a));
+  const fit = (v, half, size) => (half * 2 > size - m * 2 ? size / 2 : Math.max(m + half, Math.min(size - m - half, v)));
+  st.x = fit(st.x * W, hw, W) / W;
+  st.y = fit(st.y * H, hh, H) / H;
+}
+
 function stickerFrame(st, t) {
   if (!st.frames) return st.img;
   let ms = (t * 1000) % st.total;
@@ -1593,8 +1606,8 @@ function renderStickers() {
       return wrap2;
     };
     row.append(im, sel, x,
-      slider('크기', 5, 100, Math.round(st.size * 100), (v) => { st.size = v / 100; }),
-      slider('회전', -180, 180, st.rot, (v) => { st.rot = v; }));
+      slider('크기', 5, 100, Math.round(st.size * 100), (v) => { st.size = v / 100; clampSticker(st); }),
+      slider('회전', -180, 180, st.rot, (v) => { st.rot = v; clampSticker(st); }));
     box.append(row);
   });
 }
@@ -2187,10 +2200,9 @@ stage.addEventListener('pointermove', (e) => {
   const W = stage.width, H = stage.height, u = W / 480;
   const mx = p.x - sdrag.sx, my = p.y - sdrag.sy;
   if (sdrag.type === 'sticker') {
-    // 스티커 가운데가 카드 안쪽 영역을 벗어나지 않게
-    const m = EDGE * u;
-    sdrag.st.x = Math.max(m / W, Math.min(1 - m / W, sdrag.x0 + mx / W));
-    sdrag.st.y = Math.max(m / H, Math.min(1 - m / H, sdrag.y0 + my / H));
+    sdrag.st.x = sdrag.x0 + mx / W;
+    sdrag.st.y = sdrag.y0 + my / H;
+    clampSticker(sdrag.st);
   } else {
     const it = sdrag.it, a = artRect();
     const img = srcOf(it);
@@ -2219,6 +2231,7 @@ stage.addEventListener('wheel', (e) => {
   const k = e.deltaY < 0 ? 1.08 : 1 / 1.08;
   if (hit.type === 'sticker') {
     hit.st.size = Math.max(0.05, Math.min(1, hit.st.size * k));
+    clampSticker(hit.st);
     renderStickers();
     return;
   }
