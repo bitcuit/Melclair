@@ -1965,6 +1965,17 @@ function currentImage() { return imageAt(state.t).a; }
 function dropFitCache(it) {
   for (const k of Object.keys(it.cache)) if (k.startsWith('glow')) delete it.cache[k];
 }
+// 모든 이미지 같이: 지금 이미지의 위치·확대를 나머지에도 똑같이 넣는다
+function syncFit(it) {
+  if (!$('fitAll').checked) return;
+  for (const o of state.images) {
+    if (o === it) continue;
+    o.fx = it.fx; o.fy = it.fy; o.zoom = it.zoom;
+  }
+}
+function dropAllFitCache(it) {
+  for (const o of $('fitAll').checked ? state.images : [it]) dropFitCache(o);
+}
 
 let sdrag = null, hover = null;
 stage.addEventListener('pointerdown', (e) => {
@@ -2003,11 +2014,12 @@ stage.addEventListener('pointermove', (e) => {
     // CD는 돌고 있어서 끈 방향과 그림이 움직이는 방향이 어긋날 수 있다
     if (ox > 0) it.fx = Math.max(0, Math.min(1, sdrag.fx - mx / ox));
     if (oy > 0) it.fy = Math.max(0, Math.min(1, sdrag.fy - my / oy));
+    syncFit(it);
   }
 });
 const endDrag = () => {
   if (!sdrag) return;
-  if (sdrag.type === 'art') dropFitCache(sdrag.it);
+  if (sdrag.type === 'art') dropAllFitCache(sdrag.it);
   sdrag = null;
   stage.classList.remove('panning');
 };
@@ -2026,7 +2038,8 @@ stage.addEventListener('wheel', (e) => {
   }
   const it = currentImage();
   it.zoom = Math.max(1, Math.min(4, (it.zoom || 1) * k));
-  dropFitCache(it);
+  syncFit(it);
+  dropAllFitCache(it);
 }, { passive: false });
 stage.addEventListener('dblclick', (e) => {
   const hit = hitAt(e);
@@ -2035,7 +2048,8 @@ stage.addEventListener('dblclick', (e) => {
     const it = currentImage();
     it.fx = it.fy = 0.5;
     it.zoom = 1;
-    dropFitCache(it);
+    syncFit(it);
+    dropAllFitCache(it);
   }
 });
 
