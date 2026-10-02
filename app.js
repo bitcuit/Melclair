@@ -209,11 +209,47 @@ function renderThumbs() {
       state.images.splice(i, 1);
       renderThumbs();
     };
-    d.append(im, x);
+    const n = document.createElement('span');
+    n.className = 'num';
+    n.textContent = i + 1;
+    im.draggable = false;
+    // 끌어서 순서 바꾸기: 놓은 칸의 왼쪽 절반이면 그 앞, 오른쪽 절반이면 그 뒤로
+    d.draggable = true;
+    d.addEventListener('dragstart', (e) => {
+      thumbFrom = i;
+      d.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(i));
+    });
+    d.addEventListener('dragend', () => {
+      thumbFrom = -1;
+      for (const el of box.children) el.classList.remove('dragging', 'before', 'after');
+    });
+    d.addEventListener('dragover', (e) => {
+      if (thumbFrom < 0) return;
+      e.preventDefault();
+      const r = d.getBoundingClientRect();
+      const after = e.clientX > r.left + r.width / 2;
+      for (const el of box.children) el.classList.remove('before', 'after');
+      if (i !== thumbFrom) d.classList.add(after ? 'after' : 'before');
+    });
+    d.addEventListener('drop', (e) => {
+      if (thumbFrom < 0) return;
+      e.preventDefault();
+      const r = d.getBoundingClientRect();
+      let to = e.clientX > r.left + r.width / 2 ? i + 1 : i;
+      const [moved] = state.images.splice(thumbFrom, 1);
+      if (thumbFrom < to) to--;
+      state.images.splice(to, 0, moved);
+      thumbFrom = -1;
+      renderThumbs();
+    });
+    d.append(im, x, n);
     box.append(d);
   });
   updateInfo();
 }
+let thumbFrom = -1;
 
 // 지금 시각에 보일 이미지와 다음 이미지로 넘어가는 정도(0~1)
 function imageAt(t) {
@@ -1245,7 +1281,8 @@ function render(g, W, t) {
     const onArt = overlaps(tm.rect, { x, y, w: s, h: s });
     // 제목이 아트 위에 있으면 그 뒤만 아래로 갈수록 어둡게 깐다
     if (onArt) {
-      const top = tm.rect.y - 40 * u, bot = tm.rect.y + tm.rect.h + 12 * u;
+      // 아래 끝은 이미지 아래 끝까지 닿게 해서 틈이 안 보이게
+      const top = tm.rect.y - 40 * u, bot = y + s;
       const grad = g.createLinearGradient(0, top, 0, bot);
       grad.addColorStop(0, 'rgba(0,0,0,0)');
       grad.addColorStop(1, 'rgba(0,0,0,0.62)');
