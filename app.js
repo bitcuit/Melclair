@@ -26,6 +26,7 @@ const state = {
   tap: null,         // 박자 찍기 중이면 { texts, stamps }
   fx: 'fade',        // 가사 효과
   imgTrans: 'fade',  // 이미지가 바뀔 때
+  imgMode: 'sec',    // 이미지 바꾸는 때: sec(초마다) | lyric(가사 따라)
   // 글자 정렬. 모양마다, 묶음(제목·가사)마다 따로
   align: { player: { title: 'left', lyric: 'left' }, cd: { title: 'center', lyric: 'center' } },
   stickers: [],
@@ -38,7 +39,7 @@ let still = null;
 const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font'];
 function saveSettings() {
   try {
-    const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glowOn: $('glowOn').checked, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans,
+    const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glowOn: $('glowOn').checked, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans, imgMode: state.imgMode,
       bokeh: $('bokeh').checked, gMain: $('gMain').checked, gPron: $('gPron').checked, gTrans: $('gTrans').checked,
       align: state.align, nextLine: $('nextLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked };
     for (const f of FIELDS) o[f] = $(f).value;
@@ -56,6 +57,7 @@ function loadSettings() {
     if (o.glowOn != null) $('glowOn').checked = o.glowOn;
     if (o.imgGlitch != null) $('imgGlitch').checked = o.imgGlitch;
     if (o.imgTrans) setSeg('imgTrans', o.imgTrans);
+    if (o.imgMode) setSeg('imgMode', o.imgMode);
     for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'beatSync', 'spin']) if (o[id] != null) $(id).checked = o[id];
     // 예전 저장값(모양마다 정렬 하나)은 두 묶음에 같이 넣는다
     if (o.align) for (const m of ['player', 'cd']) {
@@ -156,7 +158,8 @@ function duration() {
     return Math.max(0.5, last.end - songBase(lyr));
   }
   const n = Math.max(state.images.length, 1);
-  return Math.max(n * num('imgSec', 3), 3);
+  const total = state.images.reduce((a, it) => a + imgSecOf(it), 0);
+  return Math.max(total || n * num('imgSec', 3), 3);
 }
 
 function lyricAt(t) {
@@ -223,14 +226,14 @@ function renderThumbs() {
     });
     d.addEventListener('dragend', () => {
       thumbFrom = -1;
-      for (const el of box.children) el.classList.remove('dragging', 'before', 'after');
+      for (const el of box.querySelectorAll('.thumb')) el.classList.remove('dragging', 'before', 'after');
     });
     d.addEventListener('dragover', (e) => {
       if (thumbFrom < 0) return;
       e.preventDefault();
       const r = d.getBoundingClientRect();
       const after = e.clientX > r.left + r.width / 2;
-      for (const el of box.children) el.classList.remove('before', 'after');
+      for (const el of box.querySelectorAll('.thumb')) el.classList.remove('before', 'after');
       if (i !== thumbFrom) d.classList.add(after ? 'after' : 'before');
     });
     d.addEventListener('drop', (e) => {
@@ -245,25 +248,153 @@ function renderThumbs() {
       renderThumbs();
     });
     d.append(im, x, n);
-    box.append(d);
+    const cell = document.createElement('div');
+    cell.className = 'thumb-cell';
+    const sec = document.createElement('input');
+    sec.type = 'number';
+    sec.min = '0.5';
+    sec.step = '0.5';
+    sec.className = 'thumb-sec';
+    sec.setAttribute('aria-label', `${i + 1}번 이미지 초`);
+    // 초마다 모드와 가사 따라 모드의 값은 따로 기억한다
+    sec.addEventListener('input', () => {
+      const v = parseFloat(sec.value);
+      it[state.imgMode === 'lyric' ? 'lsec' : 'sec'] = v > 0 ? v : undefined;
+      updateInfo();
+    });
+    cell.append(d, sec);
+    box.append(cell);
   });
+  syncImgMode();
   updateInfo();
 }
 let thumbFrom = -1;
 
 // 지금 시각에 보일 이미지와 다음 이미지로 넘어가는 정도(0~1)
+// 이미지마다 정한 초. 비워 두면 기본값
+function imgSecOf(it) {
+  return it.sec > 0 ? it.sec : num('imgSec', 3);
+}
+
+// 이미지가 보이는 구간표 { segs: [{ start, end, it }], period }. t를 period로 나눈 나머지로 찾는다
+let schedCache = { key: '', val: null };
+function imageSchedule() {
+  const imgs = state.images;
+  const au = state.audio;
+  const key = [state.imgMode, $('imgSec').value, $('lineSec').value, $('shift').value, imgs.length,
+    imgs.map((i) => (i.sec || '') + '/' + (i.lsec || '')).join(','), au ? au.a + ',' + au.b : '', $('lyrics').value].join('|');
+  // 이미지 순서가 바뀌어도 다시 만든다
+  if (schedCache.key === key && schedCache.order === imgs.map((i) => i.url).join()) return schedCache.val;
+
+  let val = null;
+  if (state.imgMode === 'lyric') val = lyricSchedule();
+  if (!val) {
+    // 초마다: 이미지마다 정한 초를 이어 붙여 한 바퀴
+    const segs = [];
+    let at = 0;
+    for (const it of imgs) { const d = imgSecOf(it); segs.push({ start: at, end: at + d, it }); at += d; }
+    val = { segs, period: at };
+  }
+  schedCache = { key, order: imgs.map((i) => i.url).join(), val };
+  return val;
+}
+
+// 가사 따라: 줄이 바뀔 때 다음 이미지. 줄이 이미지보다 적으면 한 줄을 정수 초로 나눠 여러 장을 넣고
+// 남는 시간(소수점 포함)은 그 줄의 마지막 장이 갖는다
+function lyricSchedule(useOverrides = true) {
+  const imgs = state.images;
+  const n = imgs.length;
+  const lyr = parseLyrics();
+  const T = duration();
+  const base = lyr.timed ? songBase(lyr) : 0;
+  const shift = parseFloat($('shift').value) || 0;
+  const lines = lyr.lines
+    .filter((l) => l.text)
+    .map((l) => ({ start: l.start - base + shift, end: l.end - base + shift }))
+    .filter((l) => l.end > 0 && l.start < T)
+    .map((l) => ({ start: Math.max(0, l.start), end: Math.min(T, l.end) }));
+  if (!lines.length) return null;
+  // 줄 사이 빈 시간은 앞 줄 이미지가 이어서 보이게, 첫 줄 앞은 첫 줄 이미지로
+  lines[0].start = 0;
+  for (let i = 0; i < lines.length - 1; i++) lines[i].end = lines[i + 1].start;
+  lines[lines.length - 1].end = T;
+
+  const segs = [];
+  if (lines.length >= n) {
+    lines.forEach((l, i) => segs.push({ start: l.start, end: l.end, it: imgs[i % n] }));
+  } else {
+    const per = Math.floor(n / lines.length), extra = n % lines.length;
+    let k = 0;
+    lines.forEach((l, i) => {
+      const cnt = per + (i < extra ? 1 : 0);
+      const d = l.end - l.start;
+      const step = Math.floor(d / cnt);
+      let at = l.start;
+      for (let j = 0; j < cnt; j++) {
+        // 한 줄이 장 수보다 짧으면 정수로 못 나눠서 똑같이 나눈다
+        const len = step >= 1 ? (j < cnt - 1 ? step : l.end - at) : d / cnt;
+        segs.push({ start: at, end: j < cnt - 1 ? at + len : l.end, it: imgs[k++] });
+        at += len;
+      }
+    });
+  }
+  // 직접 고친 초가 있으면 그 길이로 바꾸고 뒤는 밀거나 당긴다. 끝은 전체 길이에 맞춘다
+  if (useOverrides && imgs.some((it) => it.lsec > 0)) {
+    let at = 0;
+    const out = [];
+    for (const sg of segs) {
+      if (at >= T) break;
+      const d = sg.it.lsec > 0 ? sg.it.lsec : sg.end - sg.start;
+      out.push({ start: at, end: Math.min(T, at + d), it: sg.it });
+      at += d;
+    }
+    out[out.length - 1].end = T;
+    return { segs: out, period: T };
+  }
+  return { segs, period: T };
+}
+
+// 썸네일 아래 초 칸: 흐린 숫자는 지금 모드의 기본값(가사 따라면 가사에서 계산한 첫 구간 길이)
+function refreshThumbSecs() {
+  const cells = document.querySelectorAll('.thumb-sec');
+  const auto = state.imgMode === 'lyric' ? lyricSchedule(false) : null;
+  cells.forEach((el, i) => {
+    const it = state.images[i];
+    if (!it) return;
+    if (state.imgMode === 'lyric') {
+      const sg = auto && auto.segs.find((x) => x.it === it);
+      el.placeholder = sg ? (Math.round((sg.end - sg.start) * 10) / 10).toString() : '-';
+      if (document.activeElement !== el) el.value = it.lsec || '';
+    } else {
+      el.placeholder = $('imgSec').value || '3';
+      if (document.activeElement !== el) el.value = it.sec || '';
+    }
+  });
+}
+
+function segAt(t) {
+  const sc = imageSchedule();
+  const tt = sc.period > 0 ? ((t % sc.period) + sc.period) % sc.period : 0;
+  const segs = sc.segs;
+  let k = segs.length - 1;
+  for (let i = 0; i < segs.length; i++) if (tt < segs[i].end) { k = i; break; }
+  return { segs, k, tt };
+}
+
 function imageAt(t) {
   if (still) return { a: still.img, b: null, p: 0 };
   const n = state.images.length;
   if (!n) return { a: null, b: null, p: 0 };
   if (n === 1) return { a: state.images[0], b: null, p: 0 };
-  const sec = num('imgSec', 3);
-  const k = Math.floor(t / sec);
-  const into = t - k * sec;
-  const a = state.images[k % n];
-  const b = state.images[(k + 1) % n];
+  const { segs, k, tt } = segAt(t);
+  const sg = segs[k];
+  const a = sg.it;
+  const b = segs[(k + 1) % segs.length].it;
+  const dur = sg.end - sg.start;
+  const into = tt - sg.start;
   // 페이드일 때만 겹쳐 넘어가고, 글리치·바로는 경계에서 딱 바뀐다
-  const p = state.imgTrans === 'fade' && into > sec - FADE ? (into - (sec - FADE)) / FADE : 0;
+  const fade = Math.min(FADE, dur / 3);
+  const p = state.imgTrans === 'fade' && a !== b && into > dur - fade ? (into - (dur - fade)) / fade : 0;
   return { a, b, p: Math.min(1, Math.max(0, p)) };
 }
 
@@ -868,9 +999,9 @@ function imageGlitchAt(t) {
   let s = 0;
   // 바뀔 때 글리치: 경계 앞뒤로 세게
   if (state.imgTrans === 'glitch' && state.images.length > 1) {
-    const sec = num('imgSec', 3);
-    const into = t - Math.floor(t / sec) * sec;
-    const d = Math.min(into, sec - into);
+    const { segs, k, tt } = segAt(t);
+    const sg = segs[k];
+    const d = Math.min(tt - sg.start, sg.end - tt);
     if (d < 0.25) s = 1 - (d / 0.25) * 0.6;
   }
   // 이미지 글리치: 안 바뀌어도 가끔 짧게
@@ -1548,6 +1679,7 @@ function gifPlan() {
 function updateInfo() {
   const T = duration();
   $('seek').max = T;
+  refreshThumbSecs();
   if (state.t > T && !state.tap) state.t = 0;
   if (state.busy) return;
   const p = gifPlan();
@@ -1911,15 +2043,21 @@ async function saveMp4() {
 }
 
 // ---------- 연결 ----------
-for (const id of ['mode', 'bgMode', 'fx', 'imgTrans']) {
+for (const id of ['mode', 'bgMode', 'fx', 'imgTrans', 'imgMode']) {
   $(id).addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     setSeg(id, b.dataset.v);
     syncFx();
     syncAlign();
+    syncImgMode();
     saveSettings();
   });
+}
+// 초마다일 때만 초 칸을 보인다
+function syncImgMode() {
+  $('secRow').hidden = state.imgMode !== 'sec';
+  refreshThumbSecs();
 }
 // 가사 효과가 글리치일 때만 넣을 곳을 고르게 한다
 function syncFx() {
@@ -1951,6 +2089,7 @@ stickerDrop.addEventListener('dragover', (e) => { e.preventDefault(); stickerDro
 stickerDrop.addEventListener('dragleave', () => stickerDrop.classList.remove('over'));
 stickerDrop.addEventListener('drop', (e) => { e.preventDefault(); stickerDrop.classList.remove('over'); addStickers(e.dataTransfer.files); });
 for (const f of FIELDS) $(f).addEventListener('input', () => { updateInfo(); saveSettings(); });
+
 $('glowOn').addEventListener('change', saveSettings);
 $('imgGlitch').addEventListener('change', saveSettings);
 
@@ -2162,6 +2301,7 @@ let notesTimer = 0;
 $('lyrics').addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(renderNotes, 400); });
 
 loadSettings();
+syncImgMode();
 syncFx();
 syncAlign();
 syncGmap();
