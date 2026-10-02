@@ -26,8 +26,8 @@ const state = {
   tap: null,         // 박자 찍기 중이면 { texts, stamps }
   fx: 'fade',        // 가사 효과
   imgTrans: 'fade',  // 이미지가 바뀔 때
-  align: { player: 'left', cd: 'center' },  // 글자 정렬 (모양마다)
-  pos: { player: {}, cd: {} },              // 옮긴 글자 묶음 { title|lyric: { dx, dy } } (u 단위)
+  // 글자 정렬. 모양마다, 묶음(제목·가사)마다 따로
+  align: { player: { title: 'left', lyric: 'left' }, cd: { title: 'center', lyric: 'center' } },
   stickers: [],
   unit: 'line',      // 이미지 저장 단위
 };
@@ -40,7 +40,7 @@ function saveSettings() {
   try {
     const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glowOn: $('glowOn').checked, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans,
       bokeh: $('bokeh').checked, gMain: $('gMain').checked, gPron: $('gPron').checked, gTrans: $('gTrans').checked,
-      align: state.align, pos: state.pos, nextLine: $('nextLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked };
+      align: state.align, nextLine: $('nextLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked };
     for (const f of FIELDS) o[f] = $(f).value;
     localStorage.setItem(STORE, JSON.stringify(o));
   } catch (e) {}
@@ -57,8 +57,12 @@ function loadSettings() {
     if (o.imgGlitch != null) $('imgGlitch').checked = o.imgGlitch;
     if (o.imgTrans) setSeg('imgTrans', o.imgTrans);
     for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'beatSync', 'spin']) if (o[id] != null) $(id).checked = o[id];
-    if (o.align) Object.assign(state.align, o.align);
-    if (o.pos) Object.assign(state.pos, o.pos);
+    // 예전 저장값(모양마다 정렬 하나)은 두 묶음에 같이 넣는다
+    if (o.align) for (const m of ['player', 'cd']) {
+      const v = o.align[m];
+      if (typeof v === 'string') state.align[m] = { title: v, lyric: v };
+      else if (v) Object.assign(state.align[m], v);
+    }
     if (o.notes) Object.assign(notes, o.notes);
   } catch (e) {}
 }
@@ -1130,48 +1134,56 @@ function drawControls(g, cx, cy, u, fg) {
 function defaultBoxes(W) {
   const u = W / 480;
   return state.mode === 'player'
-    ? { title: { x: 84 * u, y: 332 * u, w: 312 * u, h: 50 * u }, lyric: { x: 64 * u, y: 422 * u, w: 352 * u, h: 124 * u } }
+    ? { title: { x: 84 * u, y: 332 * u, w: 312 * u, h: 50 * u }, lyric: { x: 64 * u, y: 404 * u, w: 352 * u, h: 146 * u } }
     : { title: { x: 50 * u, y: 440 * u, w: 380 * u, h: 50 * u }, lyric: { x: 50 * u, y: 496 * u, w: 380 * u, h: 80 * u } };
 }
-const EDGE = 16; // 옮길 수 있는 영역: 카드 가장자리에서 이만큼 안쪽 (u 단위)
-function clampBox(b, W) {
-  const u = W / 480, H = Math.round(W * 4 / 3), m = EDGE * u;
-  b.x = Math.max(m, Math.min(W - m - b.w, b.x));
-  b.y = Math.max(m, Math.min(H - m - b.h, b.y));
-  return b;
+const EDGE = 16; // 스티커가 움직일 수 있는 영역: 카드 가장자리에서 이만큼 안쪽 (u 단위)
+function alignOf(key) {
+  const a = state.align[state.mode];
+  return (a && a[key]) || 'center';
+}
+// 묶음 자리는 고정이고 정렬만 바뀐다. ax는 정렬 기준점(왼쪽 정렬이면 왼쪽 끝, 가운데면 가운데)
+function blockGeom(W, key) {
+  const d = defaultBoxes(W)[key];
+  const al = alignOf(key);
+  const ax = al === 'left' ? d.x : al === 'right' ? d.x + d.w : d.x + d.w / 2;
+  return { ax, y: d.y, w: d.w, h: d.h, al };
 }
 function layoutBoxes(W) {
-  const u = W / 480;
-  const B = defaultBoxes(W);
-  const pos = state.pos[state.mode] || {};
-  for (const k of ['title', 'lyric']) {
-    if (pos[k]) { B[k].x += pos[k].dx * u; B[k].y += pos[k].dy * u; }
-    clampBox(B[k], W);
-  }
-  return B;
+  return { title: blockGeom(W, 'title'), lyric: blockGeom(W, 'lyric') };
 }
-function alignOf() { return state.align[state.mode] || 'center'; }
-function anchorX(b) {
-  const al = alignOf();
-  return al === 'left' ? b.x : al === 'right' ? b.x + b.w : b.x + b.w / 2;
+// 정렬 기준점과 글자 폭으로 실제 글자가 차지하는 칸
+function textRect(ax, al, tw, y, h) {
+  const x = al === 'left' ? ax : al === 'right' ? ax - tw : ax - tw / 2;
+  return { x, y, w: tw, h };
 }
 function overlaps(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
 }
 
+// 제목 묶음 글자를 재고 차지하는 칸을 돌려준다
+function measureTitle(g, b, u) {
+  g.font = `700 ${22 * u}px ${FONT}`;
+  const title = fitText(g, $('title').value.trim(), b.w);
+  const tw1 = g.measureText(title).width;
+  g.font = `500 ${15 * u}px ${FONT}`;
+  const artist = fitText(g, $('artist').value.trim(), b.w);
+  const tw2 = g.measureText(artist).width;
+  const rect = textRect(b.ax, b.al, Math.max(tw1, tw2, 1), b.y, 31 * u + 18 * u);
+  return { title, artist, rect };
+}
 // 아트 위에 얹히면 흰 글씨에 옅은 그림자, 아니면 배경에 맞는 색
-function drawTitleBlock(g, b, u, fg, dim, onArt) {
-  const ax = anchorX(b);
+function drawTitleBlock(g, b, m, u, fg, dim, onArt) {
   g.save();
-  g.textAlign = alignOf();
+  g.textAlign = b.al;
   g.textBaseline = 'top';
   if (onArt) { g.shadowColor = 'rgba(0,0,0,0.35)'; g.shadowBlur = 8 * u; }
   g.fillStyle = onArt ? '#fff' : fg;
   g.font = `700 ${22 * u}px ${FONT}`;
-  g.fillText(fitText(g, $('title').value.trim(), b.w), ax, b.y);
+  g.fillText(m.title, b.ax, b.y);
   g.fillStyle = onArt ? 'rgba(255,255,255,0.78)' : dim;
   g.font = `500 ${15 * u}px ${FONT}`;
-  g.fillText(fitText(g, $('artist').value.trim(), b.w), ax, b.y + 31 * u);
+  g.fillText(m.artist, b.ax, b.y + 31 * u);
   g.restore();
 }
 
@@ -1229,10 +1241,11 @@ function render(g, W, t) {
     drawArt(g, x, y, s, s, t);
     drawBokeh(g, x, y, s, s, t);
     const B = layoutBoxes(W);
-    const onArt = overlaps(B.title, { x, y, w: s, h: s });
+    const tm = measureTitle(g, B.title, u);
+    const onArt = overlaps(tm.rect, { x, y, w: s, h: s });
     // 제목이 아트 위에 있으면 그 뒤만 아래로 갈수록 어둡게 깐다
     if (onArt) {
-      const top = B.title.y - 40 * u, bot = B.title.y + B.title.h + 12 * u;
+      const top = tm.rect.y - 40 * u, bot = tm.rect.y + tm.rect.h + 12 * u;
       const grad = g.createLinearGradient(0, top, 0, bot);
       grad.addColorStop(0, 'rgba(0,0,0,0)');
       grad.addColorStop(1, 'rgba(0,0,0,0.62)');
@@ -1240,9 +1253,9 @@ function render(g, W, t) {
       g.fillRect(x, top, s, bot - top);
     }
     g.restore();
-    drawTitleBlock(g, B.title, u, fg, dim, onArt);
-    drawLyrics(g, anchorX(B.lyric), B.lyric.y, B.lyric.y + B.lyric.h, B.lyric.w, u, fg, dim, t,
-      { align: alignOf(), size: 21, top: true, next: $('nextLine').checked });
+    drawTitleBlock(g, B.title, tm, u, fg, dim, onArt);
+    drawLyrics(g, B.lyric.ax, B.lyric.y, B.lyric.y + B.lyric.h, B.lyric.w, u, fg, dim, t,
+      { align: B.lyric.al, size: 21, next: $('nextLine').checked });
     drawProgress(g, x, 558 * u, s, u, fg, dim, t, T);
     drawControls(g, W / 2, 606 * u, u, fg);
   } else {
@@ -1256,10 +1269,11 @@ function render(g, W, t) {
     drawBokeh(g, W / 2 - 186 * u, 228 * u - 186 * u, 372 * u, 372 * u, t);
     g.restore();
     const B = layoutBoxes(W);
-    const onDisc = overlaps(B.title, { x: W / 2 - 186 * u, y: 42 * u, w: 372 * u, h: 372 * u });
-    drawTitleBlock(g, B.title, u, fg, dim, onDisc);
-    drawLyrics(g, anchorX(B.lyric), B.lyric.y, B.lyric.y + B.lyric.h, B.lyric.w, u, fg, dim, t,
-      { align: alignOf(), size: 19, next: $('nextLine').checked });
+    const tm = measureTitle(g, B.title, u);
+    const onDisc = overlaps(tm.rect, { x: W / 2 - 186 * u, y: 42 * u, w: 372 * u, h: 372 * u });
+    drawTitleBlock(g, B.title, tm, u, fg, dim, onDisc);
+    drawLyrics(g, B.lyric.ax, B.lyric.y, B.lyric.y + B.lyric.h, B.lyric.w, u, fg, dim, t,
+      { align: B.lyric.al, size: 19, next: $('nextLine').checked });
     drawProgress(g, (W - 352 * u) / 2, 586 * u, 352 * u, u, fg, dim, t, T);
   }
   drawStickers(g, W, t);
@@ -1877,21 +1891,22 @@ function syncFx() {
 }
 for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'beatSync', 'spin']) $(id).addEventListener('change', saveSettings);
 
-// 글자 정렬은 모양(플레이어/CD)마다 따로 기억한다
+// 글자 정렬은 묶음마다, 모양(플레이어/CD)마다 따로 기억한다
+const ALIGN_SEGS = { alignTitle: 'title', alignLyric: 'lyric' };
 function syncAlign() {
-  for (const b of $('align').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === alignOf()));
+  for (const [id, key] of Object.entries(ALIGN_SEGS)) {
+    for (const b of $(id).querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === alignOf(key)));
+  }
 }
-$('align').addEventListener('click', (e) => {
-  const b = e.target.closest('button');
-  if (!b) return;
-  state.align[state.mode] = b.dataset.v;
-  syncAlign();
-  saveSettings();
-});
-$('resetPos').addEventListener('click', () => {
-  state.pos[state.mode] = {};
-  saveSettings();
-});
+for (const [id, key] of Object.entries(ALIGN_SEGS)) {
+  $(id).addEventListener('click', (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    state.align[state.mode][key] = b.dataset.v;
+    syncAlign();
+    saveSettings();
+  });
+}
 
 $('stickerFile').addEventListener('change', (e) => { addStickers(e.target.files); e.target.value = ''; });
 const stickerDrop = $('stickerDrop');
@@ -1919,7 +1934,7 @@ async function applyFont() {
 }
 $('font').addEventListener('change', applyFont);
 
-// ---------- 미리보기 위에서 끌기·휠: 스티커 > 글자 묶음 > 이미지 ----------
+// ---------- 미리보기 위에서 끌기·휠: 스티커 > 이미지 ----------
 function artRect() {
   const u = stage.width / 480;
   if (state.mode === 'player') { const s2 = 352 * u; return { x: (stage.width - s2) / 2, y: 44 * u, w: s2, h: s2 }; }
@@ -1943,8 +1958,6 @@ function hitAt(e) {
     const lx = dx * Math.cos(a) - dy * Math.sin(a), ly = dx * Math.sin(a) + dy * Math.cos(a);
     if (Math.abs(lx) <= w / 2 && Math.abs(ly) <= h / 2) return { type: 'sticker', st, p };
   }
-  const B = layoutBoxes(W);
-  for (const key of ['title', 'lyric']) if (inBox(p, B[key])) return { type: 'block', key, p };
   if (currentImage() && inBox(p, artRect())) return { type: 'art', p };
   return null;
 }
@@ -1960,11 +1973,7 @@ stage.addEventListener('pointerdown', (e) => {
   stage.setPointerCapture(e.pointerId);
   const p = hit.p;
   if (hit.type === 'sticker') sdrag = { ...hit, x0: hit.st.x, y0: hit.st.y };
-  else if (hit.type === 'block') {
-    const pos = state.pos[state.mode];
-    const o = pos[hit.key] || { dx: 0, dy: 0 };
-    sdrag = { ...hit, dx0: o.dx, dy0: o.dy };
-  } else {
+  else {
     const it = currentImage();
     sdrag = { ...hit, it, fx: it.fx ?? 0.5, fy: it.fy ?? 0.5 };
   }
@@ -1985,10 +1994,6 @@ stage.addEventListener('pointermove', (e) => {
     const m = EDGE * u;
     sdrag.st.x = Math.max(m / W, Math.min(1 - m / W, sdrag.x0 + mx / W));
     sdrag.st.y = Math.max(m / H, Math.min(1 - m / H, sdrag.y0 + my / H));
-  } else if (sdrag.type === 'block') {
-    const d = defaultBoxes(W)[sdrag.key];
-    const b = clampBox({ x: d.x + sdrag.dx0 * u + mx, y: d.y + sdrag.dy0 * u + my, w: d.w, h: d.h }, W);
-    state.pos[state.mode][sdrag.key] = { dx: (b.x - d.x) / u, dy: (b.y - d.y) / u };
   } else {
     const it = sdrag.it, a = artRect();
     const img = srcOf(it);
@@ -2003,7 +2008,6 @@ stage.addEventListener('pointermove', (e) => {
 const endDrag = () => {
   if (!sdrag) return;
   if (sdrag.type === 'art') dropFitCache(sdrag.it);
-  if (sdrag.type === 'block') saveSettings();
   sdrag = null;
   stage.classList.remove('panning');
 };
@@ -2012,7 +2016,7 @@ stage.addEventListener('pointercancel', endDrag);
 stage.addEventListener('pointerleave', () => { if (!sdrag) hover = null; });
 stage.addEventListener('wheel', (e) => {
   const hit = hitAt(e);
-  if (!hit || hit.type === 'block') return;
+  if (!hit) return;
   e.preventDefault();
   const k = e.deltaY < 0 ? 1.08 : 1 / 1.08;
   if (hit.type === 'sticker') {
@@ -2027,10 +2031,7 @@ stage.addEventListener('wheel', (e) => {
 stage.addEventListener('dblclick', (e) => {
   const hit = hitAt(e);
   if (!hit) return;
-  if (hit.type === 'block') {
-    delete state.pos[state.mode][hit.key];
-    saveSettings();
-  } else if (hit.type === 'art') {
+  if (hit.type === 'art') {
     const it = currentImage();
     it.fx = it.fy = 0.5;
     it.zoom = 1;
@@ -2038,7 +2039,7 @@ stage.addEventListener('dblclick', (e) => {
   }
 });
 
-// 미리보기에만 그리는 안내선: 옮길 수 있는 영역과 지금 잡은 것
+// 미리보기에만 그리는 안내선: 스티커가 움직일 수 있는 영역과 지금 잡은 스티커
 function drawGuides() {
   const tgt = sdrag || hover;
   if (!tgt || tgt.type === 'art') return;
@@ -2051,15 +2052,10 @@ function drawGuides() {
     ctx.strokeRect(m, m, W - m * 2, H - m * 2);
   }
   ctx.strokeStyle = 'rgba(255,255,255,0.9)';
-  if (tgt.type === 'block') {
-    const b = layoutBoxes(W)[tgt.key];
-    ctx.strokeRect(b.x - 4 * u, b.y - 4 * u, b.w + 8 * u, b.h + 8 * u);
-  } else {
-    const st = tgt.st, { w, h } = stickerSize(st, W);
-    ctx.translate(st.x * W, st.y * H);
-    ctx.rotate((st.rot * Math.PI) / 180);
-    ctx.strokeRect(-w / 2 - 3 * u, -h / 2 - 3 * u, w + 6 * u, h + 6 * u);
-  }
+  const st = tgt.st, { w, h } = stickerSize(st, W);
+  ctx.translate(st.x * W, st.y * H);
+  ctx.rotate((st.rot * Math.PI) / 180);
+  ctx.strokeRect(-w / 2 - 3 * u, -h / 2 - 3 * u, w + 6 * u, h + 6 * u);
   ctx.restore();
 }
 $('bgColor').addEventListener('input', () => setSeg('bgMode', 'solid'));

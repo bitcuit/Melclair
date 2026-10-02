@@ -216,6 +216,7 @@
   <section>
     <span class="label">스티커</span>
     <div class="st-list" id="stickerList"></div>
+    <span class="hint" style="white-space:normal">미리보기에서 스티커를 끌면 위치, 휠로 크기</span>
     <label class="drop" id="stickerDrop">스티커 추가<input type="file" id="stickerFile" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden></label>
   </section>
 
@@ -285,18 +286,22 @@
   </section>
 
   <section>
-    <span class="label">배치</span>
+    <span class="label">글자 정렬</span>
     <div class="row">
-      <span class="hint" style="flex:1">글자 정렬</span>
-      <div class="seg" id="align" style="width:210px">
+      <span class="hint" style="flex:1">제목 · 가수</span>
+      <div class="seg" id="alignTitle" style="width:210px">
         <button data-v="left">왼쪽</button>
         <button data-v="center">가운데</button>
         <button data-v="right">오른쪽</button>
       </div>
     </div>
     <div class="row">
-      <span class="hint" style="flex:1; white-space:normal">미리보기에서 제목·가사·스티커를 끌어 옮기기</span>
-      <button class="btn" id="resetPos">위치 되돌리기</button>
+      <span class="hint" style="flex:1">가사 · 발음 · 번역</span>
+      <div class="seg" id="alignLyric" style="width:210px">
+        <button data-v="left">왼쪽</button>
+        <button data-v="center">가운데</button>
+        <button data-v="right">오른쪽</button>
+      </div>
     </div>
   </section>
 
