@@ -175,6 +175,15 @@
     pointer-events: none; white-space: nowrap;
   }
   .canvas-hint[hidden] { display: none; }
+  .eye {
+    position: absolute; top: 14px; right: 14px; width: 34px; height: 34px; border-radius: 9px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--text); cursor: pointer;
+    display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .eye:hover { background: var(--soft); }
+  .eye svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .eye[aria-pressed=true] .off, .eye[aria-pressed=false] .on { display: none; }
+  .eye[aria-pressed=false] { color: var(--dim); }
 
   .timeline { flex: none; background: var(--panel); border-top: 1px solid var(--line); padding: 10px 16px 12px; display: flex; flex-direction: column; gap: 10px; }
   .tl-head { display: flex; align-items: center; gap: 12px; }
@@ -501,6 +510,10 @@
   <div class="canvas-wrap">
     <canvas id="stage"></canvas>
     <div class="canvas-hint" id="canvasHint" hidden></div>
+    <button class="eye" id="eyeBtn" aria-pressed="true" aria-label="효과 숨기기">
+      <svg class="on" viewBox="0 0 24 24"><path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+      <svg class="off" viewBox="0 0 24 24"><path d="M3 3l18 18M10.6 5.6A10.6 10.6 0 0 1 12 5.5C18.4 5.5 22 12 22 12a17 17 0 0 1-3.2 3.9M6.2 6.6C3.6 8.4 2 12 2 12s3.6 6.5 10 6.5c1.7 0 3.2-.4 4.5-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg>
+    </button>
   </div>
   <div class="timeline">
     <div class="tl-head">

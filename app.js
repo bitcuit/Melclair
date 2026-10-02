@@ -1036,7 +1036,8 @@ function artBufs(w, h) {
 // 이미지 글리치 세기(0~1). 이미지가 바뀔 때 세게, 그 밖에는 가끔 짧게
 function imageGlitchAt(t) {
   const on = $('imgGlitch').checked;
-  if (still) return on ? 0.55 : 0;
+  if (view.hideFx) return 0;
+  if (fxStatic()) return on ? 0.55 : 0;
   let s = 0;
   // 바뀔 때 글리치: 경계 앞뒤로 세게
   if (state.imgTrans === 'glitch' && state.images.length > 1) {
@@ -1073,7 +1074,7 @@ function paletteOf(it) {
 
 const BOKEH_N = 16;
 function drawBokeh(g, x, y, w, h, t) {
-  if (!$('bokeh').checked) return;
+  if (!$('bokeh').checked || view.hideFx) return;
   const pal = paletteOf(imageAt(t).a);
   const T = duration();
   const cyc = Math.max(1, Math.round(T / 10));
@@ -1156,9 +1157,16 @@ function glitchBurst(t, salt, prob = 0.08) {
 }
 
 // 가사 글리치 세기(0~1). 줄이 바뀔 때 세게, 그 뒤로는 가끔 짧게 튄다
+// 미리보기 보는 방식. frozen: 멈춘 화면·장면 카드는 이미지 저장과 같은 모습(효과 고정),
+// hideFx: 눈 아이콘을 끄면 편집 화면에서만 글리치·보케·스티커 움직임을 숨긴다
+const view = { frozen: false, hideFx: false };
+const fxStatic = () => !!still || view.frozen;
+
 function glitchOf(item, t) {
   if (item.glitch != null) return item.glitch;
+  if (view.hideFx) return 0;
   if (anyMarked() && !item.gl) return 0;
+  if (view.frozen) return 0.35;
   if (item.since < 0.45) return 1 - item.since / 0.45 * 0.7;
   return glitchBurst(t, 0, 0.06);
 }
@@ -1211,7 +1219,7 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
     const alpha = still ? 1 : L.it.alpha;
     const gs = glitch ? glitchOf(L.it, t) : 0;
     // 글리치는 나타날 때 깜빡이며 들어온다
-    const a = gs > 0 && !still && L.it.since < 0.3 ? (hash(Math.floor(L.it.at * 30)) < 0.35 ? 0.15 : 1) : alpha;
+    const a = gs > 0 && !fxStatic() && L.it.since < 0.3 ? (hash(Math.floor(L.it.at * 30)) < 0.35 ? 0.15 : 1) : alpha;
     // 글리치 넣을 곳으로 고른 부분만 글리치로 그린다
     const put = (text, size, weight, color, on) => {
       g.font = `${weight} ${size}px ${FONT}`;
@@ -1555,7 +1563,8 @@ function loopFreq(period) {
 function stickerPose(st, t, u) {
   const TAU = Math.PI * 2;
   const p = { dx: 0, dy: 0, rot: 0, sx: 1, sy: 1, alpha: 1, pivot: false, glitch: 0 };
-  if (still) { if (st.fx === 'glitch') p.glitch = 0.5; return p; }
+  if (view.hideFx) return p;
+  if (fxStatic()) { if (st.fx === 'glitch') p.glitch = 0.5; return p; }
   if (st.fx === 'blink') {
     p.alpha = (t * loopFreq(1.2)) % 1 > 0.82 ? 0 : 1;
   } else if (st.fx === 'twitch') {
@@ -1774,7 +1783,10 @@ function tick(now) {
     else state.t = (state.t + dt) % T;
   }
   sizeStage();
+  view.frozen = !state.playing && !state.tap;
+  view.hideFx = !fxVisible;
   render(ctx, stage.width, state.t);
+  view.frozen = view.hideFx = false;
   drawGuides();
   drawWave();
   sceneTick();
@@ -1843,7 +1855,9 @@ function buildScenes() {
     b.className = 'scene';
     const c = document.createElement('canvas');
     c.width = TW; c.height = Math.round(TW * 4 / 3);
+    view.frozen = true;
     render(c.getContext('2d'), TW, sceneShowAt(sc));
+    view.frozen = false;
     const tm = document.createElement('span');
     tm.className = 'sc-time';
     tm.textContent = fmtTenth(sc.start);
@@ -2474,6 +2488,14 @@ $('seek').addEventListener('input', (e) => {
 $('saveMp4').addEventListener('click', saveMp4);
 $('saveGif').addEventListener('click', saveGif);
 $('saveStill').addEventListener('click', () => { closeExport(); openPicker(); });
+
+// ---------- 눈 아이콘: 편집 화면에서만 효과 보이기·숨기기 ----------
+let fxVisible = true;
+$('eyeBtn').addEventListener('click', () => {
+  fxVisible = !fxVisible;
+  $('eyeBtn').setAttribute('aria-pressed', String(fxVisible));
+  $('eyeBtn').setAttribute('aria-label', fxVisible ? '효과 숨기기' : '효과 보이기');
+});
 
 // ---------- 탭 ----------
 const TAB_KEY = 'spincard:tab';
