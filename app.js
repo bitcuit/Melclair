@@ -265,7 +265,12 @@ function renderThumbs() {
       it[state.imgMode === 'lyric' ? 'lsec' : 'sec'] = v > 0 ? v : undefined;
       updateInfo();
     });
-    cell.append(d, sec);
+    const secWrap = document.createElement('div');
+    secWrap.className = 'sec-wrap';
+    const unit = document.createElement('span');
+    unit.textContent = '초';
+    secWrap.append(sec, unit);
+    cell.append(d, secWrap);
     box.append(cell);
   });
   syncImgMode();
@@ -597,8 +602,10 @@ async function loadAudio(file) {
       $('title').value = stem;
     }
 
+    msg.textContent = '';
     $('audioName').textContent = file.name;
     $('audioBox').hidden = false;
+    $('waveRow').hidden = false;
     $('audioDrop').hidden = true;
     $('tap').disabled = false;
     syncSegInputs();
@@ -615,6 +622,7 @@ function removeAudio() {
   stopAudio();
   state.audio = null;
   $('audioBox').hidden = true;
+  $('waveRow').hidden = true;
   $('audioDrop').hidden = false;
   $('tap').disabled = true;
   state.t = 0;
@@ -660,7 +668,7 @@ function audioClock() {
 const waveCanvas = $('waveCanvas');
 function drawWave() {
   const au = state.audio;
-  if (!au || $('audioBox').hidden) return;
+  if (!au || $('waveRow').hidden) return;
   const dpr = window.devicePixelRatio || 1;
   const w = waveCanvas.clientWidth * dpr, h = waveCanvas.clientHeight * dpr;
   if (!w) return;
@@ -874,9 +882,29 @@ function endTap(text) {
   restartAudio();
 }
 document.addEventListener('keydown', (e) => {
-  if (!state.tap) return;
-  if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); tapNext(); }
-  if (e.code === 'Escape') endTap('박자 찍기를 그만뒀습니다');
+  if (state.tap) {
+    if (e.code === 'Space' || e.code === 'Enter') { e.preventDefault(); tapNext(); }
+    if (e.code === 'Escape') endTap('박자 찍기를 그만뒀습니다');
+    return;
+  }
+  const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement && document.activeElement.tagName)
+    && !['checkbox', 'range', 'color'].includes(document.activeElement.type);
+  if (typing || state.busy) return;
+  if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); }
+  else if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
+    if (!scenes.length) return;
+    e.preventDefault();
+    const cur = scenes.findIndex((sc) => state.t >= sc.start - 1e-6 && state.t < sc.end);
+    const next = Math.max(0, Math.min(scenes.length - 1, (cur < 0 ? 0 : cur) + (e.code === 'ArrowRight' ? 1 : -1)));
+    setPlaying(false);
+    state.t = sceneShowAt(scenes[next]);
+  } else if ((e.code === 'Delete' || e.code === 'Backspace') && selSticker) {
+    e.preventDefault();
+    removeSticker(selSticker);
+  } else if (e.code === 'Escape') {
+    if (!$('exportPop').hidden) closeExport();
+    else selectSticker(null);
+  }
 });
 
 // ---------- 색 ----------
@@ -1587,7 +1615,8 @@ function renderStickers() {
   box.innerHTML = '';
   state.stickers.forEach((st, i) => {
     const row = document.createElement('div');
-    row.className = 'st-row';
+    row.className = 'st-row' + (st === selSticker ? ' sel' : '');
+    row.addEventListener('pointerdown', () => selectSticker(st, false));
     const im = document.createElement('img');
     im.src = st.url;
     im.alt = '';
@@ -1599,7 +1628,7 @@ function renderStickers() {
     x.className = 'st-x';
     x.textContent = '×';
     x.setAttribute('aria-label', '스티커 빼기');
-    x.onclick = () => { URL.revokeObjectURL(st.url); state.stickers.splice(i, 1); renderStickers(); };
+    x.onclick = () => removeSticker(st);
     const slider = (label, min, max, val, on) => {
       const wrap2 = document.createElement('label');
       wrap2.className = 'st-ctrl';
@@ -1614,6 +1643,26 @@ function renderStickers() {
       slider('회전', -180, 180, st.rot, (v) => { st.rot = v; clampSticker(st); }));
     box.append(row);
   });
+}
+
+// 스티커 고르기·지우기. 미리보기에서 누르면 스티커 탭을 연다
+let selSticker = null;
+function selectSticker(st, openTab = true) {
+  if (selSticker === st) return;
+  selSticker = st;
+  if (st && openTab) showTab('sticker');
+  // 줄을 다시 만들지 않고 표시만 바꾼다(슬라이더를 잡은 채로 고를 때 끊기지 않게)
+  [...$('stickerList').children].forEach((row, i) => row.classList.toggle('sel', state.stickers[i] === st));
+  if (st) {
+    const row = $('stickerList').children[state.stickers.indexOf(st)];
+    if (row) row.scrollIntoView({ block: 'nearest' });
+  }
+}
+function removeSticker(st) {
+  URL.revokeObjectURL(st.url);
+  state.stickers.splice(state.stickers.indexOf(st), 1);
+  if (selSticker === st) selSticker = null;
+  renderStickers();
 }
 
 let discCanvas = null;
@@ -1707,12 +1756,11 @@ function updateInfo() {
   $('seek').max = T;
   refreshThumbSecs();
   if (state.t > T && !state.tap) state.t = 0;
-  if (state.busy) return;
   const p = gifPlan();
-  let s = `${fmt(T)} · GIF 초당 ${p.fps}장 ${p.frames}장`;
+  let s = `${fmt(T)} · GIF ${p.frames}장`;
   if (p.over) s += ' — 트위터 GIF는 350장까지라 구간을 줄여야 합니다';
-  else if (p.lowered) s += ' (트위터 350장 한도에 맞춰 낮춤)';
-  $('status').textContent = s;
+  else if (p.lowered) s += ` · 트위터 350장 한도라 초당 ${p.fps}장으로 낮춤`;
+  $('exportInfo').textContent = s;
 }
 
 
@@ -1996,18 +2044,19 @@ function renderNotes() {
   }
 }
 
-const SAVE_BUTTONS = { saveMp4: 'MP4 저장', saveGif: 'GIF 저장' };
+const saveLabels = {};
 function beginBusy(which) {
   state.busy = true;
   state.cancel = false;
   stopAudio();
   if (state.tap) endTap('');
+  saveLabels[which] = $(which).innerHTML;
   $(which).textContent = '멈추기';
   for (const id of ['saveMp4', 'saveGif', 'saveStill']) if (id !== which) $(id).disabled = true;
 }
 function endBusy(which) {
   state.busy = false;
-  $(which).textContent = SAVE_BUTTONS[which];
+  $(which).innerHTML = saveLabels[which];
   for (const id of ['saveMp4', 'saveGif', 'saveStill']) $(id).disabled = false;
   restartAudio();
 }
@@ -2280,10 +2329,11 @@ function dropAllFitCache(it) {
 let sdrag = null, hover = null;
 stage.addEventListener('pointerdown', (e) => {
   const hit = hitAt(e);
+  if (!hit || hit.type !== 'sticker') selectSticker(null);
   if (!hit) return;
   stage.setPointerCapture(e.pointerId);
   const p = hit.p;
-  if (hit.type === 'sticker') sdrag = { ...hit, x0: hit.st.x, y0: hit.st.y };
+  if (hit.type === 'sticker') { selectSticker(hit.st); sdrag = { ...hit, x0: hit.st.x, y0: hit.st.y }; }
   else {
     const it = currentImage();
     sdrag = { ...hit, it, fx: it.fx ?? 0.5, fy: it.fy ?? 0.5 };
@@ -2294,6 +2344,7 @@ stage.addEventListener('pointerdown', (e) => {
 stage.addEventListener('pointermove', (e) => {
   if (!sdrag) {
     hover = hitAt(e);
+    showHint(hover);
     stage.classList.toggle('can-pan', !!hover);
     return;
   }
@@ -2324,7 +2375,17 @@ const endDrag = () => {
 };
 stage.addEventListener('pointerup', endDrag);
 stage.addEventListener('pointercancel', endDrag);
-stage.addEventListener('pointerleave', () => { if (!sdrag) hover = null; });
+stage.addEventListener('pointerleave', () => { if (!sdrag) { hover = null; showHint(null); } });
+const HINTS = {
+  art: '끌어서 이동 · 휠로 확대 · 두 번 눌러 되돌리기',
+  sticker: '끌어서 이동 · 휠로 크기 · Delete로 지우기',
+};
+function showHint(h) {
+  const el = $('canvasHint');
+  const text = h ? HINTS[h.type] : '';
+  el.hidden = !text;
+  if (text) el.textContent = text;
+}
 stage.addEventListener('wheel', (e) => {
   const hit = hitAt(e);
   if (!hit) return;
@@ -2355,8 +2416,9 @@ stage.addEventListener('dblclick', (e) => {
 
 // 미리보기에만 그리는 안내선: 스티커가 움직일 수 있는 영역과 지금 잡은 스티커
 function drawGuides() {
-  const tgt = sdrag || hover;
-  if (!tgt || tgt.type === 'art') return;
+  const t0 = sdrag || hover;
+  const tgt = t0 && t0.type === 'sticker' ? t0 : selSticker ? { type: 'sticker', st: selSticker } : null;
+  if (!tgt || !state.stickers.includes(tgt.st)) return;
   const W = stage.width, H = stage.height, u = W / 480, m = EDGE * u;
   ctx.save();
   ctx.lineWidth = Math.max(1, 1.2 * u);
@@ -2365,7 +2427,8 @@ function drawGuides() {
     ctx.strokeStyle = 'rgba(255,255,255,0.45)';
     ctx.strokeRect(m, m, W - m * 2, H - m * 2);
   }
-  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.strokeStyle = tgt.st === selSticker ? '#2f6bff' : 'rgba(255,255,255,0.9)';
+  if (tgt.st === selSticker) ctx.setLineDash([]);
   const st = tgt.st, { w, h } = stickerSize(st, W);
   ctx.translate(st.x * W, st.y * H);
   ctx.rotate((st.rot * Math.PI) / 180);
@@ -2410,7 +2473,33 @@ $('seek').addEventListener('input', (e) => {
 });
 $('saveMp4').addEventListener('click', saveMp4);
 $('saveGif').addEventListener('click', saveGif);
-$('saveStill').addEventListener('click', openPicker);
+$('saveStill').addEventListener('click', () => { closeExport(); openPicker(); });
+
+// ---------- 탭 ----------
+const TAB_KEY = 'spincard:tab';
+function showTab(name) {
+  for (const b of document.querySelectorAll('.tab')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
+  for (const p of document.querySelectorAll('.pane')) p.hidden = p.dataset.pane !== name;
+  if (name === 'lyric') renderNotes();
+  try { localStorage.setItem(TAB_KEY, name); } catch (e) {}
+}
+for (const b of document.querySelectorAll('.tab')) b.addEventListener('click', () => showTab(b.dataset.tab));
+try { const t = localStorage.getItem(TAB_KEY); if (t && document.querySelector(`.pane[data-pane="${t}"]`)) showTab(t); } catch (e) {}
+
+// ---------- 내보내기 창 ----------
+function closeExport() {
+  $('exportPop').hidden = true;
+  $('exportBtn').setAttribute('aria-expanded', 'false');
+}
+$('exportBtn').addEventListener('click', () => {
+  const open = $('exportPop').hidden;
+  $('exportPop').hidden = !open;
+  $('exportBtn').setAttribute('aria-expanded', String(open));
+  if (open) updateInfo();
+});
+document.addEventListener('pointerdown', (e) => {
+  if (!$('exportPop').hidden && !e.target.closest('.export')) closeExport();
+});
 $('pickClose').addEventListener('click', () => { pickJob++; $('picker').hidden = true; });
 $('pickSave').addEventListener('click', savePicks);
 $('pickAll').addEventListener('click', () => {

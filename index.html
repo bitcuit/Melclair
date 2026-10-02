@@ -11,381 +11,510 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri/dist/galmuri.css">
 <style>
   :root {
-    --bg: #f4f3f0;
+    --bg: #f2f1ee;
     --panel: #ffffff;
-    --line: #e2e0db;
+    --line: #e4e2dd;
+    --line-2: #d6d3cd;
     --text: #1d1c1a;
     --dim: #7a7771;
+    --faint: #a8a59f;
     --accent: #1d1c1a;
     --accent-text: #ffffff;
-    --soft: #efede8;
+    --soft: #f0eeea;
+    --stage: #e9e7e3;
+    --sel: #2f6bff;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
-      --bg: #161615; --panel: #1f1f1d; --line: #33322f; --text: #eceae5;
-      --dim: #94918a; --accent: #eceae5; --accent-text: #161615; --soft: #2a2927;
+      --bg: #141413; --panel: #1c1c1b; --line: #2e2d2b; --line-2: #3a3936; --text: #eceae5;
+      --dim: #94918a; --faint: #6c6a65; --accent: #eceae5; --accent-text: #161615; --soft: #262624;
+      --stage: #111110; --sel: #6b95ff;
     }
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
   body {
     background: var(--bg); color: var(--text);
-    font: 14px/1.45 "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+    font: 13px/1.45 "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
-    display: grid; grid-template-columns: 400px 1fr;
+    display: grid; grid-template-rows: 52px 1fr; grid-template-columns: 64px 312px 1fr;
+    grid-template-areas: "top top top" "rail panel stage";
+    overflow: hidden;
   }
-  aside {
-    background: var(--panel); border-right: 1px solid var(--line);
-    height: 100vh; overflow-y: auto; padding: 22px 24px 28px;
-    display: flex; flex-direction: column; gap: 22px;
+  button, input, select, textarea { font: inherit; color: inherit; }
+
+  /* ---------- 위 막대 ---------- */
+  header {
+    grid-area: top; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 20px;
+    background: var(--panel); border-bottom: 1px solid var(--line);
   }
-  h1 { font-size: 17px; margin: 0; letter-spacing: -0.01em; }
-  section { display: flex; flex-direction: column; gap: 8px; }
-  .label { font-size: 12px; color: var(--dim); font-weight: 600; }
+  .brand { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; width: 330px; flex: none; }
+  .grow { flex: 1; }
+  .status { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
+
+  /* ---------- 탭 막대 ---------- */
+  nav {
+    grid-area: rail; background: var(--panel); border-right: 1px solid var(--line);
+    display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 10px 0;
+  }
+  .tab {
+    width: 52px; height: 54px; border: 0; background: none; border-radius: 10px; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    color: var(--dim); font-size: 11px;
+  }
+  .tab svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+  .tab:hover { background: var(--soft); color: var(--text); }
+  .tab[aria-selected=true] { background: var(--soft); color: var(--text); font-weight: 600; }
+
+  /* ---------- 설정 패널 ---------- */
+  aside { grid-area: panel; background: var(--panel); border-right: 1px solid var(--line); overflow-y: auto; }
+  .pane { padding: 18px 18px 28px; display: flex; flex-direction: column; gap: 22px; }
+  .pane[hidden] { display: none; }
+  .pane h2 { font-size: 14px; margin: 0; }
+  .group { display: flex; flex-direction: column; gap: 8px; }
+  .gl { font-size: 11px; font-weight: 600; color: var(--dim); letter-spacing: .02em; }
   .row { display: flex; gap: 8px; align-items: center; }
   .row > * { min-width: 0; }
+  .row[hidden], .check[hidden], .group[hidden] { display: none; }
+  .lbl { flex: 1; color: var(--dim); font-size: 12px; white-space: nowrap; }
+  .unit { color: var(--dim); font-size: 12px; flex: none; }
   input[type=text], input[type=number], textarea, select {
-    width: 100%; font: inherit; color: inherit; background: var(--bg);
-    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; outline: none;
+    width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; outline: none;
   }
-  input:focus, textarea:focus, select:focus { border-color: var(--dim); }
-  textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
-  input[type=number] { width: 72px; flex: none; }
-  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--soft); border-radius: 9px; padding: 3px; }
-  .seg button {
-    font: inherit; border: 0; background: transparent; color: var(--dim);
-    padding: 7px 0; border-radius: 7px; cursor: pointer;
-  }
+  input:focus, textarea:focus, select:focus { border-color: var(--line-2); background: var(--panel); }
+  textarea { resize: vertical; min-height: 180px; line-height: 1.6; }
+  input[type=number] { width: 66px; flex: none; text-align: right; }
+  input[type=color] { width: 34px; height: 32px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); flex: none; cursor: pointer; }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--soft); border-radius: 9px; padding: 3px; flex: none; }
+  .seg.full { flex: 1; }
+  .seg button { border: 0; background: transparent; color: var(--dim); padding: 6px 10px; border-radius: 7px; cursor: pointer; white-space: nowrap; }
   .seg button[aria-pressed=true] { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
   .btn {
-    font: inherit; font-weight: 600; border: 1px solid var(--line); background: var(--panel); color: var(--text);
-    border-radius: 8px; padding: 8px 14px; cursor: pointer; white-space: nowrap;
+    font-weight: 600; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    border-radius: 8px; padding: 7px 12px; cursor: pointer; white-space: nowrap;
   }
-  .btn:hover { border-color: var(--dim); }
+  .btn:hover { border-color: var(--line-2); background: var(--soft); }
   .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-  .btn:disabled { opacity: .45; cursor: default; }
-  .thumbs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
-  .thumb { position: relative; aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--soft); }
-  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .thumb { cursor: grab; }
-  .thumb-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-  input.thumb-sec { width: 100%; padding: 3px 6px; font-size: 12px; text-align: center; border-radius: 6px; }
-  input.thumb-sec[hidden] { display: none; }
-  .thumb.dragging { opacity: .35; }
-  .thumb.before { box-shadow: -3px 0 0 var(--text); }
-  .thumb.after { box-shadow: 3px 0 0 var(--text); }
-  .thumb .num {
-    position: absolute; left: 4px; bottom: 4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
-    background: rgba(0,0,0,.6); color: #fff; font-size: 11px; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums;
-  }
-  .thumb button {
-    position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%;
-    border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 13px; line-height: 20px; padding: 0; cursor: pointer;
-  }
+  .btn.primary:hover { opacity: .9; }
+  .btn:disabled { opacity: .4; cursor: default; }
+  .btn.tapping { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .check input { accent-color: var(--text); width: 15px; height: 15px; margin: 0; }
   .drop {
-    border: 1px dashed var(--line); border-radius: 8px; padding: 14px; text-align: center; color: var(--dim); cursor: pointer;
+    border: 1px dashed var(--line-2); border-radius: 8px; padding: 12px; text-align: center; color: var(--dim); cursor: pointer;
   }
-  .drop.over { border-color: var(--text); color: var(--text); }
-  .hint { font-size: 12px; color: var(--dim); white-space: nowrap; flex: none; }
-  input[type=color] { width: 40px; height: 34px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); flex: none; }
-  .wave { position: relative; height: 64px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; cursor: crosshair; touch-action: none; }
-  .wave canvas { width: 100%; height: 100%; display: block; }
-  .file-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
-  .file-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .file-row button { border: 0; background: none; color: var(--dim); cursor: pointer; font-size: 15px; padding: 0 4px; }
+  .drop:hover, .drop.over { border-color: var(--text); color: var(--text); }
   .msg { font-size: 12px; color: var(--dim); }
   .msg:empty { display: none; }
-  .row[hidden], .check[hidden] { display: none; }
-  .st-list { display: flex; flex-direction: column; gap: 12px; }
+
+  /* 이미지 칸 */
+  .thumb-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .thumb-cell { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .thumb { position: relative; aspect-ratio: 1; border-radius: 8px; overflow: hidden; background: var(--soft); cursor: grab; }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb.dragging { opacity: .35; }
+  .thumb.before { box-shadow: -3px 0 0 var(--sel); }
+  .thumb.after { box-shadow: 3px 0 0 var(--sel); }
+  .thumb > button {
+    position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%;
+    border: 0; background: rgba(0,0,0,.55); color: #fff; font-size: 13px; line-height: 20px; padding: 0; cursor: pointer;
+    opacity: 0; transition: opacity .12s;
+  }
+  .thumb:hover > button { opacity: 1; }
+  .thumb .num {
+    position: absolute; left: 4px; bottom: 4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px;
+    background: rgba(0,0,0,.55); color: #fff; font-size: 11px; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums;
+  }
+  .sec-wrap { display: flex; align-items: center; gap: 3px; }
+  input.thumb-sec { flex: 1; width: auto; min-width: 0; padding: 3px 4px; font-size: 12px; text-align: right; border-radius: 6px; }
+  .sec-wrap span { font-size: 11px; color: var(--dim); }
+  .tile {
+    aspect-ratio: 1; display: flex; align-items: center; justify-content: center; padding: 0;
+    font-size: 22px; font-weight: 300; color: var(--faint);
+  }
+
+  /* 노래 */
+  .file-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--soft); border-radius: 8px; }
+  .file-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .x { border: 0; background: none; color: var(--dim); cursor: pointer; font-size: 15px; padding: 0 4px; line-height: 1; }
+  .x:hover { color: var(--text); }
+
+  /* 줄마다 설정 */
+  details.notes summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--dim); }
+  details.notes[open] summary { margin-bottom: 10px; }
+  .note-list { display: flex; flex-direction: column; gap: 12px; max-height: 340px; overflow-y: auto; padding-right: 4px; }
+  .note-row { display: flex; flex-direction: column; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .note-row:last-child { border-bottom: 0; }
+  .note-row .src { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .note-row input[type=text] { padding: 5px 8px; font-size: 12px; }
+  .note-row .check { font-size: 12px; color: var(--dim); }
+
+  /* 스티커 */
+  .st-list { display: flex; flex-direction: column; gap: 8px; }
   .st-list:empty { display: none; }
-  .st-row { display: grid; grid-template-columns: 44px 1fr auto; gap: 6px 8px; align-items: center; }
+  .st-row {
+    display: grid; grid-template-columns: 44px 1fr auto; gap: 6px 10px; align-items: center;
+    padding: 8px; border: 1px solid var(--line); border-radius: 10px;
+  }
+  .st-row.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel); }
   .st-row img { width: 44px; height: 44px; object-fit: contain; background: var(--soft); border-radius: 6px; grid-row: span 3; align-self: start; }
-  .st-row select { padding: 6px 8px; }
+  .st-row select { padding: 5px 8px; }
   .st-x { border: 0; background: none; color: var(--dim); cursor: pointer; font-size: 15px; padding: 0 4px; }
   .st-ctrl { grid-column: 2 / -1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
   .st-ctrl input { flex: 1; accent-color: var(--text); }
-  .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-  .check input { accent-color: var(--text); width: 16px; height: 16px; margin: 0; }
-  .btn.tapping { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
-  details.notes summary { cursor: pointer; font-size: 12px; color: var(--dim); font-weight: 600; padding: 2px 0; }
-  details.notes[open] summary { margin-bottom: 8px; }
-  .note-list { display: flex; flex-direction: column; gap: 10px; max-height: 320px; overflow-y: auto; padding-right: 4px; }
-  .note-row { display: flex; flex-direction: column; gap: 4px; }
-  .note-row .src { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .note-row input { padding: 6px 9px; font-size: 13px; }
+
+  /* ---------- 가운데: 미리보기 + 타임라인 ---------- */
+  main { grid-area: stage; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; background: var(--stage); }
+  .canvas-wrap { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 24px; position: relative; }
+  #stage { max-width: 100%; max-height: 100%; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,.14); touch-action: none; display: block; }
+  #stage.can-pan { cursor: grab; }
+  #stage.panning { cursor: grabbing; }
+  .canvas-hint {
+    position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+    background: rgba(20,20,19,.78); color: #fff; font-size: 12px; padding: 5px 10px; border-radius: 999px;
+    pointer-events: none; white-space: nowrap;
+  }
+  .canvas-hint[hidden] { display: none; }
+
+  .timeline { flex: none; background: var(--panel); border-top: 1px solid var(--line); padding: 10px 16px 12px; display: flex; flex-direction: column; gap: 10px; }
+  .tl-head { display: flex; align-items: center; gap: 12px; }
+  .play {
+    width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-text);
+    cursor: pointer; font-size: 11px; flex: none; display: flex; align-items: center; justify-content: center;
+  }
+  .time { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--dim); width: 84px; flex: none; }
+  #seek { flex: 1; accent-color: var(--text); }
+  .scenes { display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 2px 2px 6px; }
+  .scenes:empty { display: none; }
+  .scene {
+    flex: none; width: 72px; border: 0; padding: 0; background: none; cursor: pointer; text-align: left;
+    color: var(--text); display: flex; flex-direction: column; gap: 3px;
+  }
+  .scene canvas { width: 72px; height: 96px; display: block; border-radius: 6px; outline: 2px solid transparent; outline-offset: 1px; }
+  .scene.on canvas { outline-color: var(--sel); }
+  .scene:hover canvas { outline-color: var(--line-2); }
+  .scene.on:hover canvas { outline-color: var(--sel); }
+  .sc-time { font-size: 10px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .sc-text { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wave-row { display: flex; align-items: center; gap: 10px; }
+  .wave-row[hidden] { display: none; }
+  .wave { flex: 1; height: 48px; border-radius: 8px; background: var(--bg); border: 1px solid var(--line); overflow: hidden; cursor: crosshair; touch-action: none; }
+  .wave canvas { width: 100%; height: 100%; display: block; }
+  .wave-row input[type=text] { width: 72px; flex: none; padding: 5px 8px; font-size: 12px; text-align: center; font-variant-numeric: tabular-nums; }
+
+  /* ---------- 내보내기 ---------- */
+  .export { position: relative; }
+  .pop {
+    position: absolute; right: 0; top: calc(100% + 8px); width: 280px; z-index: 20;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.16);
+    padding: 14px; display: flex; flex-direction: column; gap: 10px;
+  }
+  .pop[hidden] { display: none; }
+  .pop select { width: 150px; flex: none; }
+  .pop .info { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .pop .info:empty { display: none; }
+  .pop hr { border: 0; border-top: 1px solid var(--line); margin: 2px 0; }
+  .wide { width: 100%; display: flex; justify-content: space-between; align-items: center; }
+  .wide small { font-weight: 500; opacity: .6; }
+
+  /* 이미지 저장 고르기 */
   .picker {
-    position: absolute; inset: 0; background: var(--bg); z-index: 5;
-    display: flex; flex-direction: column; padding: 20px 24px; gap: 16px;
+    position: absolute; inset: 0; background: var(--stage); z-index: 5;
+    display: flex; flex-direction: column; padding: 16px 20px; gap: 14px;
   }
   .picker[hidden] { display: none; }
   .picker-bar { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-  .picker-bar .seg { width: 200px; }
   .picker-bar select { width: auto; }
-  .picker-bar .grow { flex: 1; }
+  #pickCount { color: var(--dim); font-size: 12px; }
   .picker-grid {
-    flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
     gap: 14px; align-content: start; padding: 4px;
   }
-  .pick { border: 0; padding: 0; background: none; cursor: pointer; border-radius: 10px; position: relative; font: inherit; color: inherit; text-align: left; }
+  .pick { border: 0; padding: 0; background: none; cursor: pointer; border-radius: 10px; position: relative; color: inherit; text-align: left; }
   .pick canvas { width: 100%; display: block; border-radius: 10px; outline: 2px solid transparent; outline-offset: 2px; }
-  .pick[aria-pressed=true] canvas { outline-color: var(--text); }
+  .pick[aria-pressed=true] canvas { outline-color: var(--sel); }
   .pick .mark {
     position: absolute; top: 8px; right: 8px; width: 22px; height: 22px; border-radius: 50%;
-    background: rgba(0,0,0,.45); border: 1.5px solid #fff; color: #fff; font-size: 13px; line-height: 19px; text-align: center;
+    background: rgba(0,0,0,.4); border: 1.5px solid #fff; color: #fff; font-size: 13px; line-height: 19px; text-align: center;
   }
   .pick[aria-pressed=false] .mark { color: transparent; }
-  .pick[aria-pressed=true] .mark { background: var(--text); border-color: var(--text); color: var(--bg); }
+  .pick[aria-pressed=true] .mark { background: var(--sel); border-color: var(--sel); }
   .pick .cap { font-size: 12px; color: var(--dim); margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  main {
-    position: relative;
-    height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px 24px; min-width: 0;
-    overflow: hidden;
-  }
-  #stage { max-height: calc(100vh - 360px); max-width: 100%; border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.12); touch-action: none; }
-  #stage.can-pan { cursor: grab; }
-  #stage.panning { cursor: grabbing; }
-  .scenes {
-    display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; flex: none; width: min(760px, 100%); padding: 4px 2px 6px; scroll-behavior: smooth;
-  }
-  .scenes:empty { display: none; }
-  .scene {
-    flex: none; width: 84px; border: 0; padding: 0; background: none; cursor: pointer; text-align: left;
-    font: inherit; color: var(--text); display: flex; flex-direction: column; gap: 3px;
-  }
-  .scene canvas { width: 84px; height: 112px; display: block; border-radius: 7px; outline: 2px solid transparent; outline-offset: 1px; }
-  .scene.on canvas { outline-color: var(--text); }
-  .scene:hover canvas { outline-color: var(--dim); }
-  .sc-time { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
-  .sc-text { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .player { display: flex; align-items: center; gap: 12px; width: min(480px, 100%); }
-  .player input[type=range] { flex: 1; accent-color: var(--text); }
-  .time { font-variant-numeric: tabular-nums; color: var(--dim); font-size: 12px; width: 78px; text-align: right; }
-  .save { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; }
-  .status { font-size: 12px; color: var(--dim); min-height: 18px; font-variant-numeric: tabular-nums; text-align: center; }
-  @media (max-width: 860px) {
-    body { grid-template-columns: 1fr; }
-    aside { height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 18px 16px; }
-    main { height: auto; padding: 20px 16px 32px; }
-    #stage { max-height: none; width: 100%; }
+
+  @media (max-width: 900px) {
+    body { grid-template-columns: 56px 1fr; grid-template-rows: 52px auto 1fr; grid-template-areas: "top top" "rail panel" "stage stage"; overflow: auto; }
+    .brand { width: auto; }
+    nav { flex-direction: row; justify-content: center; }
+    aside { max-height: 46vh; }
+    main { min-height: 80vh; }
   }
 </style>
 </head>
 <body>
-<aside>
-  <h1>Spincard</h1>
-
-  <section>
-    <div class="seg" id="mode">
-      <button data-v="player" aria-pressed="true">음악 플레이어</button>
-      <button data-v="cd" aria-pressed="false">CD 플레이어</button>
+<header>
+  <div class="brand">Spincard</div>
+  <div class="seg" id="mode">
+    <button data-v="player" aria-pressed="true">음악 플레이어</button>
+    <button data-v="cd" aria-pressed="false">CD 플레이어</button>
+  </div>
+  <label class="check" id="spinRow" hidden><input type="checkbox" id="spin" checked>CD 돌리기</label>
+  <span class="grow"></span>
+  <span class="status" id="status"></span>
+  <div class="export">
+    <button class="btn primary" id="exportBtn" aria-expanded="false">내보내기</button>
+    <div class="pop" id="exportPop" hidden>
+      <div class="row"><span class="lbl">크기</span>
+        <select id="size">
+          <option value="360">360 × 480</option>
+          <option value="480" selected>480 × 640</option>
+          <option value="600">600 × 800</option>
+          <option value="720">720 × 960</option>
+        </select>
+      </div>
+      <div class="row"><span class="lbl">GIF</span>
+        <select id="fps">
+          <option value="10">초당 10장</option>
+          <option value="20" selected>초당 20장</option>
+          <option value="25">초당 25장</option>
+        </select>
+      </div>
+      <div class="info" id="exportInfo"></div>
+      <hr>
+      <button class="btn primary wide" id="saveMp4">MP4 저장<small>소리 포함</small></button>
+      <button class="btn wide" id="saveGif">GIF 저장<small>소리 없음</small></button>
+      <button class="btn wide" id="saveStill">이미지 저장<small>PNG · JPG</small></button>
     </div>
-    <label class="check" id="spinRow" hidden><input type="checkbox" id="spin" checked>CD 돌리기</label>
-  </section>
+  </div>
+</header>
 
-  <section>
-    <span class="label">이미지</span>
-    <div class="thumbs" id="thumbs"></div>
-    <label class="drop" id="drop">이미지 추가<input type="file" id="file" accept="image/*" multiple hidden></label>
-    <div class="row">
-      <span class="hint" style="flex:1">바꾸는 때</span>
-      <div class="seg" id="imgMode" style="width:210px">
+<nav role="tablist" aria-label="편집 도구">
+  <button class="tab" role="tab" data-tab="image" aria-selected="true">
+    <svg viewBox="0 0 24 24"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="M20.5 16l-5-5-8.5 8.5"/></svg>이미지</button>
+  <button class="tab" role="tab" data-tab="song" aria-selected="false">
+    <svg viewBox="0 0 24 24"><path d="M9 18V5.5l11-2V16"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg>노래</button>
+  <button class="tab" role="tab" data-tab="lyric" aria-selected="false">
+    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 11h11M4 16h16M4 21h8"/></svg>가사</button>
+  <button class="tab" role="tab" data-tab="text" aria-selected="false">
+    <svg viewBox="0 0 24 24"><path d="M5 6.5V5h14v1.5M12 5v14M9 19h6"/></svg>글자</button>
+  <button class="tab" role="tab" data-tab="fx" aria-selected="false">
+    <svg viewBox="0 0 24 24"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/></svg>효과</button>
+  <button class="tab" role="tab" data-tab="sticker" aria-selected="false">
+    <svg viewBox="0 0 24 24"><path d="M20 13V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h7z"/><path d="M13 20v-5a2 2 0 0 1 2-2h5"/></svg>스티커</button>
+</nav>
+
+<aside>
+  <!-- 이미지 -->
+  <div class="pane" data-pane="image">
+    <h2>이미지</h2>
+    <div class="thumb-grid">
+      <div id="thumbs" style="display:contents"></div>
+      <label class="drop tile" id="drop" aria-label="이미지 추가">+<input type="file" id="file" accept="image/*" multiple hidden></label>
+    </div>
+    <div class="group">
+      <span class="gl">바꾸는 때</span>
+      <div class="seg" id="imgMode">
         <button data-v="sec" aria-pressed="true">초마다</button>
         <button data-v="lyric" aria-pressed="false">가사 따라</button>
       </div>
+      <div class="row" id="secRow"><span class="lbl">기본 길이</span><input type="number" id="imgSec" min="0.5" step="0.5" value="3"><span class="unit">초</span></div>
+      <div class="row" id="refitRow" hidden><span class="lbl"></span><button class="btn" id="refit" disabled>초 다시 나누기</button></div>
     </div>
-    <span class="hint" style="white-space:normal">썸네일 아래 칸에 이미지마다 초를 따로 넣을 수 있음</span>
-    <div class="row" id="refitRow" hidden>
-      <span class="hint" style="flex:1; white-space:normal">가사를 고친 뒤 직접 넣은 초를 지우고 다시 나누기</span>
-      <button class="btn" id="refit" disabled>가사에 다시 맞추기</button>
+    <div class="group">
+      <span class="gl">위치</span>
+      <label class="check"><input type="checkbox" id="fitAll">모든 이미지 같이 맞추기</label>
     </div>
-    <div class="row" id="secRow"><span class="hint" style="flex:1">기본</span><input type="number" id="imgSec" min="0.5" step="0.5" value="3"><span class="hint">초</span></div>
-    <span class="hint">미리보기에서 이미지를 끌면 위치, 휠로 확대, 두 번 누르면 원래대로</span>
-    <label class="check"><input type="checkbox" id="fitAll">모든 이미지 같이 옮기고 확대하기</label>
-    <div class="row">
-      <span class="hint" style="flex:1">그라디언트 맵</span>
-      <select id="gmap" style="width:150px">
-        <option value="">없음</option>
-        <optgroup label="기본">
-          <option value="dawn">새벽</option>
-          <option value="sea">바다</option>
-          <option value="sunset">노을</option>
-          <option value="mono">흑백</option>
-          <option value="sepia">세피아</option>
-          <option value="neon">형광</option>
-        </optgroup>
-        <optgroup label="듀오톤">
-          <option value="duoPink">핑크 · 남색</option>
-          <option value="duoBlueOrange">파랑 · 주황</option>
-          <option value="duoRedCyan">빨강 · 청록</option>
-          <option value="mint">민트</option>
-        </optgroup>
-        <optgroup label="페이드 · 빈티지">
-          <option value="fadeLight">라이트 페이드</option>
-          <option value="fadeDark">다크 페이드</option>
-          <option value="vintage">빈티지 흑백</option>
-          <option value="selenium">차가운 흑백</option>
-        </optgroup>
-        <optgroup label="비비드">
-          <option value="hyper">하이퍼컬러</option>
-          <option value="dream">몽환</option>
-        </optgroup>
-        <option value="custom">직접 고르기</option>
-      </select>
-      <input type="color" id="gmA" value="#1a1446" aria-label="어두운 쪽 색" hidden>
-      <input type="color" id="gmB" value="#ffd9a8" aria-label="밝은 쪽 색" hidden>
-    </div>
-    <div class="row">
-      <span class="hint" style="flex:1">바뀔 때</span>
-      <div class="seg" id="imgTrans" style="width:210px">
-        <button data-v="fade" aria-pressed="true">페이드</button>
-        <button data-v="glitch" aria-pressed="false">글리치</button>
-        <button data-v="cut" aria-pressed="false">바로</button>
+    <div class="group">
+      <span class="gl">그라디언트 맵</span>
+      <div class="row">
+        <select id="gmap">
+          <option value="">없음</option>
+          <optgroup label="기본">
+            <option value="dawn">새벽</option>
+            <option value="sea">바다</option>
+            <option value="sunset">노을</option>
+            <option value="mono">흑백</option>
+            <option value="sepia">세피아</option>
+            <option value="neon">형광</option>
+          </optgroup>
+          <optgroup label="듀오톤">
+            <option value="duoPink">핑크 · 남색</option>
+            <option value="duoBlueOrange">파랑 · 주황</option>
+            <option value="duoRedCyan">빨강 · 청록</option>
+            <option value="mint">민트</option>
+          </optgroup>
+          <optgroup label="페이드 · 빈티지">
+            <option value="fadeLight">라이트 페이드</option>
+            <option value="fadeDark">다크 페이드</option>
+            <option value="vintage">빈티지 흑백</option>
+            <option value="selenium">차가운 흑백</option>
+          </optgroup>
+          <optgroup label="비비드">
+            <option value="hyper">하이퍼컬러</option>
+            <option value="dream">몽환</option>
+          </optgroup>
+          <option value="custom">직접 고르기</option>
+        </select>
+        <input type="color" id="gmA" value="#1a1446" aria-label="어두운 쪽 색" hidden>
+        <input type="color" id="gmB" value="#ffd9a8" aria-label="밝은 쪽 색" hidden>
       </div>
     </div>
-    <div class="row" style="gap:18px">
-      <span class="hint" style="flex:1">효과</span>
+  </div>
+
+  <!-- 노래 -->
+  <div class="pane" data-pane="song" hidden>
+    <h2>노래</h2>
+    <div class="group">
+      <input type="text" id="title" placeholder="제목">
+      <input type="text" id="artist" placeholder="가수">
+    </div>
+    <div class="group">
+      <span class="gl">노래 파일</span>
+      <label class="drop" id="audioDrop">mp3 · m4a · wav 넣기<input type="file" id="audioFile" accept="audio/*" hidden></label>
+      <div id="audioBox" hidden>
+        <div class="file-row"><span id="audioName"></span><button class="x" id="audioRemove" aria-label="노래 빼기">×</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 가사 -->
+  <div class="pane" data-pane="lyric" hidden>
+    <h2>가사</h2>
+    <div class="group">
+      <textarea id="lyrics" placeholder="한 줄에 한 소절"></textarea>
+      <div class="row">
+        <button class="btn" id="findLyrics">가사 찾기</button>
+        <button class="btn" id="tap" disabled>박자 찍기</button>
+      </div>
+      <div class="msg" id="lyricMsg"></div>
+    </div>
+    <details class="notes" id="notesBox"><summary>줄마다 발음 · 번역 · 글리치</summary><div class="note-list" id="noteList"></div></details>
+    <div class="group">
+      <span class="gl">시간</span>
+      <div class="row"><span class="lbl">박자 없는 줄 길이</span><input type="number" id="lineSec" min="0.5" step="0.5" value="3"><span class="unit">초</span></div>
+      <div class="row"><span class="lbl">가사 늦추기</span><input type="number" id="shift" step="0.1" value="0"><span class="unit">초</span></div>
+    </div>
+    <label class="check"><input type="checkbox" id="nextLine">다음 줄 보이기</label>
+  </div>
+
+  <!-- 글자 -->
+  <div class="pane" data-pane="text" hidden>
+    <h2>글자</h2>
+    <div class="group">
+      <span class="gl">글꼴</span>
+      <select id="font">
+        <option value="Pretendard">프리텐다드</option>
+        <option value="Noto Sans KR">본고딕</option>
+        <option value="IBM Plex Sans KR">IBM Plex Sans KR</option>
+        <option value="Gowun Dodum">고운 돋움</option>
+        <option value="Do Hyeon">도현</option>
+        <option value="Jua">주아</option>
+        <option value="Black Han Sans">검은고딕</option>
+        <option value="Orbit">오르빗</option>
+        <option value="Galmuri11">갈무리 (픽셀)</option>
+        <option value="Noto Serif KR">본명조</option>
+        <option value="Nanum Myeongjo">나눔명조</option>
+        <option value="Gowun Batang">고운 바탕</option>
+        <option value="Hahmlet">함렛</option>
+        <option value="Song Myung">송명</option>
+        <option value="Nanum Pen Script">나눔손글씨 펜</option>
+      </select>
+    </div>
+    <div class="group">
+      <span class="gl">정렬</span>
+      <div class="row">
+        <span class="lbl">제목 · 가수</span>
+        <div class="seg" id="alignTitle">
+          <button data-v="left">왼쪽</button>
+          <button data-v="center">가운데</button>
+          <button data-v="right">오른쪽</button>
+        </div>
+      </div>
+      <div class="row">
+        <span class="lbl">가사</span>
+        <div class="seg" id="alignLyric">
+          <button data-v="left">왼쪽</button>
+          <button data-v="center">가운데</button>
+          <button data-v="right">오른쪽</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 효과 -->
+  <div class="pane" data-pane="fx" hidden>
+    <h2>효과</h2>
+    <div class="group">
+      <span class="gl">이미지</span>
+      <div class="row">
+        <span class="lbl">바뀔 때</span>
+        <div class="seg" id="imgTrans">
+          <button data-v="fade" aria-pressed="true">페이드</button>
+          <button data-v="glitch" aria-pressed="false">글리치</button>
+          <button data-v="cut" aria-pressed="false">바로</button>
+        </div>
+      </div>
       <label class="check"><input type="checkbox" id="imgGlitch">글리치</label>
       <label class="check"><input type="checkbox" id="bokeh">보케</label>
     </div>
-    <label class="check"><input type="checkbox" id="beatSync">글리치를 노래 박자에 맞추기</label>
-  </section>
+    <div class="group">
+      <span class="gl">가사</span>
+      <div class="row">
+        <span class="lbl">나타날 때</span>
+        <div class="seg" id="fx">
+          <button data-v="fade" aria-pressed="true">페이드</button>
+          <button data-v="glitch" aria-pressed="false">글리치</button>
+        </div>
+      </div>
+      <div class="row" id="gTargets" style="gap:14px" hidden>
+        <span class="lbl">글리치 넣을 곳</span>
+        <label class="check"><input type="checkbox" id="gMain" checked>가사</label>
+        <label class="check"><input type="checkbox" id="gPron">발음</label>
+        <label class="check"><input type="checkbox" id="gTrans">번역</label>
+      </div>
+    </div>
+    <div class="group">
+      <span class="gl">글리치</span>
+      <label class="check"><input type="checkbox" id="beatSync">노래 박자에 맞추기</label>
+    </div>
+    <div class="group">
+      <span class="gl">배경</span>
+      <div class="row">
+        <div class="seg full" id="bgMode">
+          <button data-v="blur" aria-pressed="true">이미지 흐리게</button>
+          <button data-v="solid" aria-pressed="false">단색</button>
+        </div>
+        <input type="color" id="bgColor" value="#232220" aria-label="배경 색">
+      </div>
+      <label class="check"><input type="checkbox" id="glowOn" checked>주변 빛</label>
+    </div>
+  </div>
 
-  <section>
-    <span class="label">스티커</span>
+  <!-- 스티커 -->
+  <div class="pane" data-pane="sticker" hidden>
+    <h2>스티커</h2>
     <div class="st-list" id="stickerList"></div>
-    <span class="hint" style="white-space:normal">미리보기에서 스티커를 끌면 위치, 휠로 크기</span>
-    <label class="drop" id="stickerDrop">스티커 추가<input type="file" id="stickerFile" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden></label>
-  </section>
-
-  <section>
-    <span class="label">노래</span>
-    <input type="text" id="title" placeholder="제목">
-    <input type="text" id="artist" placeholder="가수">
-    <label class="drop" id="audioDrop">노래 파일 넣기<input type="file" id="audioFile" accept="audio/*" hidden></label>
-    <div id="audioBox" hidden>
-      <div class="file-row"><span id="audioName"></span><button id="audioRemove" aria-label="노래 빼기">×</button></div>
-      <div class="wave" id="wave"><canvas id="waveCanvas"></canvas></div>
-      <div class="row" style="margin-top:8px">
-        <span class="hint">구간</span>
-        <input type="text" id="segA" aria-label="구간 시작">
-        <span class="hint">~</span>
-        <input type="text" id="segB" aria-label="구간 끝">
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <span class="label">가사</span>
-    <textarea id="lyrics" placeholder="한 줄에 한 소절"></textarea>
-    <div class="row">
-      <button class="btn" id="findLyrics">가사 찾기</button>
-      <button class="btn" id="tap" disabled>박자 찍기</button>
-    </div>
-    <div class="msg" id="lyricMsg"></div>
-    <details class="notes" id="notesBox"><summary>줄마다 설정</summary><div class="note-list" id="noteList"></div></details>
-    <div class="row">
-      <span class="hint" style="flex:1">효과</span>
-      <div class="seg" id="fx" style="width:180px">
-        <button data-v="fade" aria-pressed="true">페이드</button>
-        <button data-v="glitch" aria-pressed="false">글리치</button>
-      </div>
-    </div>
-    <div class="row" id="gTargets" style="gap:14px" hidden>
-      <span class="hint" style="flex:1">글리치 넣을 곳</span>
-      <label class="check"><input type="checkbox" id="gMain" checked>가사</label>
-      <label class="check"><input type="checkbox" id="gPron">발음</label>
-      <label class="check"><input type="checkbox" id="gTrans">번역</label>
-    </div>
-    <label class="check"><input type="checkbox" id="nextLine">다음 줄 보이기</label>
-    <div class="row"><span class="hint" style="flex:1">박자 없는 줄은 한 줄당</span><input type="number" id="lineSec" min="0.5" step="0.5" value="3"><span class="hint">초</span></div>
-    <div class="row"><span class="hint" style="flex:1">가사 늦추기</span><input type="number" id="shift" step="0.1" value="0"><span class="hint">초</span></div>
-  </section>
-
-  <section>
-    <span class="label">글꼴</span>
-    <select id="font">
-      <option value="Pretendard">프리텐다드</option>
-      <option value="Noto Sans KR">본고딕 (Noto Sans KR)</option>
-      <option value="IBM Plex Sans KR">IBM Plex Sans KR</option>
-      <option value="Gowun Dodum">고운 돋움</option>
-      <option value="Do Hyeon">도현</option>
-      <option value="Jua">주아</option>
-      <option value="Black Han Sans">검은고딕</option>
-      <option value="Orbit">오르빗</option>
-      <option value="Galmuri11">갈무리 (픽셀)</option>
-      <option value="Noto Serif KR">본명조 (Noto Serif KR)</option>
-      <option value="Nanum Myeongjo">나눔명조</option>
-      <option value="Gowun Batang">고운 바탕</option>
-      <option value="Hahmlet">함렛</option>
-      <option value="Song Myung">송명</option>
-      <option value="Nanum Pen Script">나눔손글씨 펜</option>
-    </select>
-  </section>
-
-  <section>
-    <span class="label">글자 정렬</span>
-    <div class="row">
-      <span class="hint" style="flex:1">제목 · 가수</span>
-      <div class="seg" id="alignTitle" style="width:210px">
-        <button data-v="left">왼쪽</button>
-        <button data-v="center">가운데</button>
-        <button data-v="right">오른쪽</button>
-      </div>
-    </div>
-    <div class="row">
-      <span class="hint" style="flex:1">가사 · 발음 · 번역</span>
-      <div class="seg" id="alignLyric" style="width:210px">
-        <button data-v="left">왼쪽</button>
-        <button data-v="center">가운데</button>
-        <button data-v="right">오른쪽</button>
-      </div>
-    </div>
-  </section>
-
-  <section>
-    <span class="label">배경</span>
-    <div class="row">
-      <div class="seg" id="bgMode" style="flex:1">
-        <button data-v="blur" aria-pressed="true">이미지 흐리게</button>
-        <button data-v="solid" aria-pressed="false">단색</button>
-      </div>
-      <input type="color" id="bgColor" value="#232220">
-    </div>
-    <label class="check"><input type="checkbox" id="glowOn" checked>주변 빛</label>
-  </section>
-
-  <section>
-    <span class="label">크기</span>
-    <div class="row">
-      <select id="size">
-        <option value="360">360 × 480</option>
-        <option value="480" selected>480 × 640</option>
-        <option value="600">600 × 800</option>
-        <option value="720">720 × 960</option>
-      </select>
-      <select id="fps">
-        <option value="10">GIF 초당 10장</option>
-        <option value="20" selected>GIF 초당 20장</option>
-        <option value="25">GIF 초당 25장</option>
-      </select>
-    </div>
-  </section>
+    <label class="drop" id="stickerDrop">PNG · JPG · GIF 넣기<input type="file" id="stickerFile" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden></label>
+  </div>
 </aside>
 
 <main>
-  <canvas id="stage"></canvas>
-  <div class="player">
-    <button class="btn" id="play" aria-label="일시정지">❚❚</button>
-    <input type="range" id="seek" min="0" max="1" step="0.01" value="0" aria-label="재생 위치">
-    <span class="time" id="time">0:00 / 0:00</span>
+  <div class="canvas-wrap">
+    <canvas id="stage"></canvas>
+    <div class="canvas-hint" id="canvasHint" hidden></div>
   </div>
-  <div class="scenes" id="scenes"></div>
-  <div class="save">
-    <button class="btn primary" id="saveMp4">MP4 저장</button>
-    <button class="btn" id="saveGif">GIF 저장</button>
-    <button class="btn" id="saveStill">이미지 저장</button>
+  <div class="timeline">
+    <div class="tl-head">
+      <button class="play" id="play" aria-label="일시정지">❚❚</button>
+      <span class="time" id="time">0:00 / 0:00</span>
+      <input type="range" id="seek" min="0" max="1" step="0.01" value="0" aria-label="재생 위치">
+    </div>
+    <div class="scenes" id="scenes"></div>
+    <div class="wave-row" id="waveRow" hidden>
+      <div class="wave" id="wave"><canvas id="waveCanvas"></canvas></div>
+      <input type="text" id="segA" aria-label="구간 시작">
+      <input type="text" id="segB" aria-label="구간 끝">
+    </div>
   </div>
-  <div class="status" id="status"></div>
   <div class="picker" id="picker" hidden>
     <div class="picker-bar">
       <div class="seg" id="unit">
@@ -394,7 +523,7 @@
       </div>
       <select id="stillFmt" aria-label="파일 형식"><option value="png">PNG</option><option value="jpg">JPG</option></select>
       <span class="grow"></span>
-      <span class="hint" id="pickCount"></span>
+      <span id="pickCount"></span>
       <button class="btn" id="pickAll">모두 고르기</button>
       <button class="btn primary" id="pickSave" disabled>저장</button>
       <button class="btn" id="pickClose">닫기</button>
