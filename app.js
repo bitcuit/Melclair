@@ -364,6 +364,7 @@ function lyricSchedule(useOverrides = true) {
 
 // 썸네일 아래 초 칸: 흐린 숫자는 지금 모드의 기본값(가사 따라면 가사에서 계산한 첫 구간 길이)
 function refreshThumbSecs() {
+  $('refit').disabled = !state.images.some((it) => it.lsec > 0);
   const cells = document.querySelectorAll('.thumb-sec');
   const auto = state.imgMode === 'lyric' ? lyricSchedule(false) : null;
   cells.forEach((el, i) => {
@@ -2065,6 +2066,7 @@ for (const id of ['mode', 'bgMode', 'fx', 'imgTrans', 'imgMode']) {
 // 초마다일 때만 초 칸을 보인다
 function syncImgMode() {
   $('secRow').hidden = state.imgMode !== 'sec';
+  $('refitRow').hidden = state.imgMode !== 'lyric';
   refreshThumbSecs();
 }
 // 가사 효과가 글리치일 때만 넣을 곳을 고르게 한다
@@ -2281,6 +2283,10 @@ audioDrop.addEventListener('drop', (e) => {
 $('audioRemove').addEventListener('click', removeAudio);
 
 $('findLyrics').addEventListener('click', findLyrics);
+$('refit').addEventListener('click', () => {
+  for (const it of state.images) it.lsec = undefined;
+  updateInfo();
+});
 $('tap').addEventListener('click', () => (state.tap ? tapNext() : startTap()));
 
 $('play').addEventListener('click', () => setPlaying(!state.playing));
