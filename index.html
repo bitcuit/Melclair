@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spincard</title>
+<style>
+  :root {
+    --bg: #f4f3f0;
+    --panel: #ffffff;
+    --line: #e2e0db;
+    --text: #1d1c1a;
+    --dim: #7a7771;
+    --accent: #1d1c1a;
+    --accent-text: #ffffff;
+    --soft: #efede8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #161615; --panel: #1f1f1d; --line: #33322f; --text: #eceae5;
+      --dim: #94918a; --accent: #eceae5; --accent-text: #161615; --soft: #2a2927;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font: 14px/1.45 "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    display: grid; grid-template-columns: 400px 1fr;
+  }
+  aside {
+    background: var(--panel); border-right: 1px solid var(--line);
+    height: 100vh; overflow-y: auto; padding: 22px 24px 28px;
+    display: flex; flex-direction: column; gap: 22px;
+  }
+  h1 { font-size: 17px; margin: 0; letter-spacing: -0.01em; }
+  section { display: flex; flex-direction: column; gap: 8px; }
+  .label { font-size: 12px; color: var(--dim); font-weight: 600; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { min-width: 0; }
+  input[type=text], input[type=number], textarea, select {
+    width: 100%; font: inherit; color: inherit; background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; outline: none;
+  }
+  input:focus, textarea:focus, select:focus { border-color: var(--dim); }
+  textarea { resize: vertical; min-height: 150px; line-height: 1.6; }
+  input[type=number] { width: 72px; flex: none; }
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--soft); border-radius: 9px; padding: 3px; }
+  .seg button {
+    font: inherit; border: 0; background: transparent; color: var(--dim);
+    padding: 7px 0; border-radius: 7px; cursor: pointer;
+  }
+  .seg button[aria-pressed=true] { background: var(--panel); color: var(--text); font-weight: 600; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+  .btn {
+    font: inherit; font-weight: 600; border: 1px solid var(--line); background: var(--panel); color: var(--text);
+    border-radius: 8px; padding: 8px 14px; cursor: pointer; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--dim); }
+  .btn.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .thumbs { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+  .thumb { position: relative; aspect-ratio: 1; border-radius: 6px; overflow: hidden; background: var(--soft); }
+  .thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .thumb button {
+    position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 50%;
+    border: 0; background: rgba(0,0,0,.6); color: #fff; font-size: 13px; line-height: 20px; padding: 0; cursor: pointer;
+  }
+  .drop {
+    border: 1px dashed var(--line); border-radius: 8px; padding: 14px; text-align: center; color: var(--dim); cursor: pointer;
+  }
+  .drop.over { border-color: var(--text); color: var(--text); }
+  .hint { font-size: 12px; color: var(--dim); }
+  .hint code { background: var(--soft); padding: 1px 5px; border-radius: 4px; font-family: inherit; }
+  input[type=color] { width: 40px; height: 34px; padding: 2px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); flex: none; }
+  main {
+    height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; min-width: 0;
+  }
+  #stage { max-height: calc(100vh - 180px); max-width: 100%; border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.12); }
+  .player { display: flex; align-items: center; gap: 12px; width: min(480px, 100%); }
+  .player input[type=range] { flex: 1; accent-color: var(--text); }
+  .time { font-variant-numeric: tabular-nums; color: var(--dim); font-size: 12px; width: 78px; text-align: right; }
+  .save { display: flex; gap: 8px; align-items: center; }
+  .status { font-size: 12px; color: var(--dim); min-height: 18px; font-variant-numeric: tabular-nums; }
+  @media (max-width: 860px) {
+    body { grid-template-columns: 1fr; }
+    aside { height: auto; border-right: 0; border-bottom: 1px solid var(--line); padding: 18px 16px; }
+    main { height: auto; padding: 20px 16px 32px; }
+    #stage { max-height: none; width: 100%; }
+  }
+</style>
+</head>
+<body>
+<aside>
+  <h1>Spincard</h1>
+
+  <section>
+    <div class="seg" id="mode">
+      <button data-v="player" aria-pressed="true">음악 플레이어</button>
+      <button data-v="cd" aria-pressed="false">CD 플레이어</button>
+    </div>
+  </section>
+
+  <section>
+    <span class="label">이미지</span>
+    <div class="thumbs" id="thumbs"></div>
+    <label class="drop" id="drop">이미지 추가<input type="file" id="file" accept="image/*" multiple hidden></label>
+    <div class="row"><span class="hint" style="flex:1">여러 장이면</span><input type="number" id="imgSec" min="0.5" step="0.5" value="3"><span class="hint">초마다 바꾸기</span></div>
+  </section>
+
+  <section>
+    <span class="label">노래</span>
+    <input type="text" id="title" placeholder="제목">
+    <input type="text" id="artist" placeholder="가수">
+  </section>
+
+  <section>
+    <span class="label">가사</span>
+    <textarea id="lyrics" placeholder="한 줄에 한 소절"></textarea>
+    <div class="row"><span class="hint" style="flex:1">한 줄당</span><input type="number" id="lineSec" min="0.5" step="0.5" value="3"><span class="hint">초</span></div>
+    <span class="hint">줄 앞에 <code>[5]</code>를 붙이면 그 줄만 5초</span>
+  </section>
+
+  <section>
+    <span class="label">배경</span>
+    <div class="row">
+      <div class="seg" id="bgMode" style="flex:1">
+        <button data-v="blur" aria-pressed="true">이미지 흐리게</button>
+        <button data-v="solid" aria-pressed="false">단색</button>
+      </div>
+      <input type="color" id="bgColor" value="#232220">
+    </div>
+  </section>
+
+  <section>
+    <span class="label">GIF</span>
+    <div class="row">
+      <select id="size">
+        <option value="360">360 × 480</option>
+        <option value="480" selected>480 × 640</option>
+        <option value="600">600 × 800</option>
+      </select>
+      <select id="fps">
+        <option value="10">초당 10장</option>
+        <option value="20" selected>초당 20장</option>
+        <option value="25">초당 25장</option>
+      </select>
+    </div>
+  </section>
+</aside>
+
+<main>
+  <canvas id="stage"></canvas>
+  <div class="player">
+    <button class="btn" id="play" aria-label="일시정지">❚❚</button>
+    <input type="range" id="seek" min="0" max="1" step="0.01" value="0" aria-label="재생 위치">
+    <span class="time" id="time">0:00 / 0:00</span>
+  </div>
+  <div class="save">
+    <button class="btn primary" id="saveGif">GIF 저장</button>
+    <button class="btn" id="savePng">PNG 저장</button>
+    <button class="btn" id="saveJpg">JPG 저장</button>
+  </div>
+  <div class="status" id="status"></div>
+</main>
+
+<script src="vendor/gifenc.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
