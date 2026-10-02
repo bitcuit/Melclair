@@ -84,6 +84,7 @@
   .file-row button { border: 0; background: none; color: var(--dim); cursor: pointer; font-size: 15px; padding: 0 4px; }
   .msg { font-size: 12px; color: var(--dim); }
   .msg:empty { display: none; }
+  .row[hidden] { display: none; }
   .check { display: flex; align-items: center; gap: 8px; cursor: pointer; }
   .check input { accent-color: var(--text); width: 16px; height: 16px; margin: 0; }
   .btn.tapping { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
@@ -169,7 +170,19 @@
       <input type="color" id="gmA" value="#1a1446" aria-label="어두운 쪽 색" hidden>
       <input type="color" id="gmB" value="#ffd9a8" aria-label="밝은 쪽 색" hidden>
     </div>
-    <label class="check"><input type="checkbox" id="imgGlitch">이미지 글리치</label>
+    <div class="row">
+      <span class="hint" style="flex:1">바뀔 때</span>
+      <div class="seg" id="imgTrans" style="width:210px">
+        <button data-v="fade" aria-pressed="true">페이드</button>
+        <button data-v="glitch" aria-pressed="false">글리치</button>
+        <button data-v="cut" aria-pressed="false">바로</button>
+      </div>
+    </div>
+    <div class="row" style="gap:18px">
+      <span class="hint" style="flex:1">효과</span>
+      <label class="check"><input type="checkbox" id="imgGlitch">글리치</label>
+      <label class="check"><input type="checkbox" id="bokeh">보케</label>
+    </div>
   </section>
 
   <section>
@@ -204,6 +217,12 @@
         <button data-v="fade" aria-pressed="true">페이드</button>
         <button data-v="glitch" aria-pressed="false">글리치</button>
       </div>
+    </div>
+    <div class="row" id="gTargets" style="gap:14px" hidden>
+      <span class="hint" style="flex:1">글리치 넣을 곳</span>
+      <label class="check"><input type="checkbox" id="gMain" checked>가사</label>
+      <label class="check"><input type="checkbox" id="gPron">발음</label>
+      <label class="check"><input type="checkbox" id="gTrans">번역</label>
     </div>
     <div class="row"><span class="hint" style="flex:1">박자 없는 줄은 한 줄당</span><input type="number" id="lineSec" min="0.5" step="0.5" value="3"><span class="hint">초</span></div>
     <div class="row"><span class="hint" style="flex:1">가사 늦추기</span><input type="number" id="shift" step="0.1" value="0"><span class="hint">초</span></div>

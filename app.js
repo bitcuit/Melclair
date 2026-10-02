@@ -25,6 +25,7 @@ const state = {
   cancel: false,
   tap: null,         // 박자 찍기 중이면 { texts, stamps }
   fx: 'fade',        // 가사 효과
+  imgTrans: 'fade',  // 이미지가 바뀔 때
   unit: 'line',      // 이미지 저장 단위
 };
 // 이미지 저장용 한 장을 그릴 때만 채운다: { img, items }
@@ -34,7 +35,8 @@ let still = null;
 const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font'];
 function saveSettings() {
   try {
-    const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glowOn: $('glowOn').checked, imgGlitch: $('imgGlitch').checked, notes };
+    const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glowOn: $('glowOn').checked, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans,
+      bokeh: $('bokeh').checked, gMain: $('gMain').checked, gPron: $('gPron').checked, gTrans: $('gTrans').checked };
     for (const f of FIELDS) o[f] = $(f).value;
     localStorage.setItem(STORE, JSON.stringify(o));
   } catch (e) {}
@@ -49,6 +51,8 @@ function loadSettings() {
     if (o.fx) setSeg('fx', o.fx);
     if (o.glowOn != null) $('glowOn').checked = o.glowOn;
     if (o.imgGlitch != null) $('imgGlitch').checked = o.imgGlitch;
+    if (o.imgTrans) setSeg('imgTrans', o.imgTrans);
+    for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans']) if (o[id] != null) $(id).checked = o[id];
     if (o.notes) Object.assign(notes, o.notes);
   } catch (e) {}
 }
@@ -212,7 +216,8 @@ function imageAt(t) {
   const into = t - k * sec;
   const a = state.images[k % n];
   const b = state.images[(k + 1) % n];
-  const p = into > sec - FADE ? (into - (sec - FADE)) / FADE : 0;
+  // 페이드일 때만 겹쳐 넘어가고, 글리치·바로는 경계에서 딱 바뀐다
+  const p = state.imgTrans === 'fade' && into > sec - FADE ? (into - (sec - FADE)) / FADE : 0;
   return { a, b, p: Math.min(1, Math.max(0, p)) };
 }
 
@@ -792,17 +797,73 @@ function artBufs(w, h) {
 
 // 이미지 글리치 세기(0~1). 이미지가 바뀔 때 세게, 그 밖에는 가끔 짧게
 function imageGlitchAt(t) {
-  if (!$('imgGlitch').checked) return 0;
-  if (still) return 0.55;
-  if (state.images.length > 1) {
+  const on = $('imgGlitch').checked;
+  if (still) return on ? 0.55 : 0;
+  let s = 0;
+  // 바뀔 때 글리치: 경계 앞뒤로 세게
+  if (state.imgTrans === 'glitch' && state.images.length > 1) {
     const sec = num('imgSec', 3);
     const into = t - Math.floor(t / sec) * sec;
-    const toNext = sec - into;
-    if (toNext < 0.2) return 0.4 + 0.6 * (1 - toNext / 0.2);
-    if (into < 0.35) return 1 - into / 0.35 * 0.7;
+    const d = Math.min(into, sec - into);
+    if (d < 0.25) s = 1 - (d / 0.25) * 0.6;
   }
-  const k = Math.floor(t * 8);
-  return hash(k + 99) < 0.07 ? 0.35 + hash(k + 3) * 0.4 : 0;
+  // 이미지 글리치: 안 바뀌어도 가끔 짧게
+  if (on) {
+    const k = Math.floor(t * 8);
+    if (hash(k + 99) < 0.08) s = Math.max(s, 0.35 + hash(k + 3) * 0.4);
+  }
+  return s;
+}
+
+// ---------- 보케 ----------
+// 이미지에서 밝은 색 몇 개를 뽑아 빛 동그라미 색으로 쓴다
+function paletteOf(it) {
+  if (!it) return [[255, 244, 230]];
+  const key = 'pal' + gmKey();
+  if (it.cache[key]) return it.cache[key];
+  const c = document.createElement('canvas');
+  c.width = c.height = 12;
+  const g = c.getContext('2d', { willReadFrequently: true });
+  g.drawImage(srcOf(it), 0, 0, 12, 12);
+  const px = g.getImageData(0, 0, 12, 12).data;
+  const cols = [];
+  for (let i = 0; i < px.length; i += 4) cols.push([px[i], px[i + 1], px[i + 2]]);
+  const lum = (c2) => 0.299 * c2[0] + 0.587 * c2[1] + 0.114 * c2[2];
+  cols.sort((x, y) => lum(y) - lum(x));
+  // 밝은 쪽에서 고르고 흰색을 섞어 빛처럼 보이게
+  const pal = [0, 6, 14, 24, 36].map((i) => cols[Math.min(i, cols.length - 1)].map((v) => Math.round(v * 0.6 + 255 * 0.4)));
+  it.cache[key] = pal;
+  return pal;
+}
+
+const BOKEH_N = 16;
+function drawBokeh(g, x, y, w, h, t) {
+  if (!$('bokeh').checked) return;
+  const pal = paletteOf(imageAt(t).a);
+  const T = duration();
+  const cyc = Math.max(1, Math.round(T / 10));
+  const TAU = Math.PI * 2;
+  g.save();
+  g.globalCompositeOperation = 'screen';
+  for (let i = 0; i < BOKEH_N; i++) {
+    const k = cyc * (1 + (i % 2));
+    const r = w * (0.03 + 0.08 * hash(i * 3.7));
+    // 위로 천천히 떠오르고 좌우로 살짝 흔들린다. 전체 길이에 정수 바퀴라 반복이 끊기지 않는다
+    let yn = (hash(i * 1.3) - (k * t) / T) % 1;
+    if (yn < 0) yn += 1;
+    const px = x + (hash(i * 2.1) + 0.04 * Math.sin(TAU * ((k * t) / T + hash(i)))) * w;
+    const py = y + (yn * 1.2 - 0.1) * h;
+    const a = 0.16 + 0.24 * (0.5 + 0.5 * Math.sin(TAU * ((2 * k * t) / T + hash(i * 5))));
+    const [cr, cg, cb] = pal[i % pal.length];
+    const grd = g.createRadialGradient(px, py, 0, px, py, r);
+    grd.addColorStop(0, `rgba(${cr},${cg},${cb},${a})`);
+    grd.addColorStop(0.62, `rgba(${cr},${cg},${cb},${a * 0.85})`);
+    grd.addColorStop(0.82, `rgba(${cr},${cg},${cb},${a * 0.45})`);
+    grd.addColorStop(1, `rgba(${cr},${cg},${cb},0)`);
+    g.fillStyle = grd;
+    g.beginPath(); g.arc(px, py, r, 0, TAU); g.fill();
+  }
+  g.restore();
 }
 
 // 아트(또는 디스크) 뒤에서 번져 나오는 빛. 노래가 있으면 소리 크기를 따라 숨 쉰다
@@ -889,34 +950,31 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
     const gs = glitch ? glitchOf(L.it) : 0;
     // 글리치는 나타날 때 깜빡이며 들어온다
     const a = glitch && !still && L.it.since < 0.3 ? (hash(Math.floor(L.it.at * 30)) < 0.35 ? 0.15 : 1) : alpha;
+    // 글리치 넣을 곳으로 고른 부분만 글리치로 그린다
+    const put = (text, size, weight, color, on) => {
+      g.font = `${weight} ${size}px ${FONT}`;
+      if (on && gs > 0) {
+        const tw = g.measureText(text).width;
+        drawGlitchText(g, text, left ? cx + tw / 2 : cx, y, size, color, a, gs, u, L.it.at, weight);
+        g.textAlign = left ? 'left' : 'center';
+        g.textBaseline = 'top';
+      } else {
+        g.globalAlpha = a;
+        g.fillStyle = color;
+        g.fillText(text, cx, y);
+      }
+    };
     if (L.pron) {
-      g.globalAlpha = a;
-      g.fillStyle = dim;
-      g.font = `500 ${S.pron}px ${FONT}`;
-      g.fillText(L.pron, cx, y);
+      put(L.pron, S.pron, 500, dim, $('gPron').checked);
       y += S.pron * 1.5;
     }
     for (const s of L.main) {
-      if (gs > 0) {
-        g.font = `600 ${S.main}px ${FONT}`;
-        const tw = g.measureText(s).width;
-        drawGlitchText(g, s, left ? cx + tw / 2 : cx, y, S.main, fg, a, gs, u, L.it.at);
-        g.textAlign = left ? 'left' : 'center';
-      }
-      else {
-        g.globalAlpha = a;
-        g.fillStyle = fg;
-        g.font = `600 ${S.main}px ${FONT}`;
-        g.fillText(s, cx, y);
-      }
+      put(s, S.main, 600, fg, $('gMain').checked);
       y += S.main * 1.38;
     }
     if (L.trans.length) {
       y += 3 * u;
-      g.globalAlpha = a;
-      g.fillStyle = dim;
-      g.font = `500 ${S.trans}px ${FONT}`;
-      for (const s of L.trans) { g.fillText(s, cx, y); y += S.trans * 1.4; }
+      for (const s of L.trans) { put(s, S.trans, 500, dim, $('gTrans').checked); y += S.trans * 1.4; }
     }
     y += 10 * u * k * big;
   }
@@ -932,8 +990,8 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
 // 색이 갈라지고 가로 띠가 어긋나는 글씨
 const gBase = document.createElement('canvas');
 const gTint = document.createElement('canvas');
-function drawGlitchText(g, text, cx, y, size, fg, alpha, s, u, seed) {
-  const font = `600 ${size}px ${FONT}`;
+function drawGlitchText(g, text, cx, y, size, fg, alpha, s, u, seed, weight = 600) {
+  const font = `${weight} ${size}px ${FONT}`;
   const bc = gBase.getContext('2d');
   bc.font = font;
   const pad = Math.ceil(24 * u);
@@ -1080,6 +1138,7 @@ function render(g, W, t) {
     g.save();
     g.beginPath(); g.roundRect(x, y, s, s, 14 * u); g.clip();
     drawArt(g, x, y, s, s, t);
+    drawBokeh(g, x, y, s, s, t);
     // 아트 아래쪽만 살짝 어둡게 깔고 제목·가수를 얹는다
     const dimH = 104 * u;
     const grad = g.createLinearGradient(0, y + s - dimH, 0, y + s);
@@ -1108,6 +1167,13 @@ function render(g, W, t) {
   } else {
     drawGlow(g, W / 2, 228 * u, 372 * u, true, u, t);
     drawDisc(g, W / 2, 228 * u, 186 * u, u, t, T);
+    g.save();
+    g.beginPath();
+    g.arc(W / 2, 228 * u, 186 * u, 0, Math.PI * 2);
+    g.arc(W / 2, 228 * u, 186 * u * 0.075, 0, Math.PI * 2);
+    g.clip('evenodd');
+    drawBokeh(g, W / 2 - 186 * u, 228 * u - 186 * u, 372 * u, 372 * u, t);
+    g.restore();
     drawTitles(g, W / 2, 440 * u, 380 * u, u, fg, dim);
     drawLyrics(g, W / 2, 496 * u, 576 * u, 380 * u, u, fg, dim, t, { size: 19 });
     drawProgress(g, (W - 352 * u) / 2, 586 * u, 352 * u, u, fg, dim, t, T);
@@ -1554,14 +1620,18 @@ async function saveMp4() {
 }
 
 // ---------- 연결 ----------
-for (const id of ['mode', 'bgMode', 'fx']) {
+for (const id of ['mode', 'bgMode', 'fx', 'imgTrans']) {
   $(id).addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
     setSeg(id, b.dataset.v);
+    syncFx();
     saveSettings();
   });
 }
+// 가사 효과가 글리치일 때만 넣을 곳을 고르게 한다
+function syncFx() { $('gTargets').hidden = state.fx !== 'glitch'; }
+for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans']) $(id).addEventListener('change', saveSettings);
 for (const f of FIELDS) $(f).addEventListener('input', () => { updateInfo(); saveSettings(); });
 $('glowOn').addEventListener('change', saveSettings);
 $('imgGlitch').addEventListener('change', saveSettings);
@@ -1699,6 +1769,7 @@ let notesTimer = 0;
 $('lyrics').addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(renderNotes, 400); });
 
 loadSettings();
+syncFx();
 syncGmap();
 applyFont();
 updateInfo();
