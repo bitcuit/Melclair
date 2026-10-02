@@ -138,12 +138,25 @@
   .pick .cap { font-size: 12px; color: var(--dim); margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   main {
     position: relative;
-    height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 24px; min-width: 0;
+    height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 20px 24px; min-width: 0;
     overflow: hidden;
   }
-  #stage { max-height: calc(100vh - 180px); max-width: 100%; border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.12); touch-action: none; }
+  #stage { max-height: calc(100vh - 360px); max-width: 100%; border-radius: 14px; box-shadow: 0 10px 40px rgba(0,0,0,.12); touch-action: none; }
   #stage.can-pan { cursor: grab; }
   #stage.panning { cursor: grabbing; }
+  .scenes {
+    display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; flex: none; width: min(760px, 100%); padding: 4px 2px 6px; scroll-behavior: smooth;
+  }
+  .scenes:empty { display: none; }
+  .scene {
+    flex: none; width: 84px; border: 0; padding: 0; background: none; cursor: pointer; text-align: left;
+    font: inherit; color: var(--text); display: flex; flex-direction: column; gap: 3px;
+  }
+  .scene canvas { width: 84px; height: 112px; display: block; border-radius: 7px; outline: 2px solid transparent; outline-offset: 1px; }
+  .scene.on canvas { outline-color: var(--text); }
+  .scene:hover canvas { outline-color: var(--dim); }
+  .sc-time { font-size: 11px; color: var(--dim); font-variant-numeric: tabular-nums; }
+  .sc-text { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .player { display: flex; align-items: center; gap: 12px; width: min(480px, 100%); }
   .player input[type=range] { flex: 1; accent-color: var(--text); }
   .time { font-variant-numeric: tabular-nums; color: var(--dim); font-size: 12px; width: 78px; text-align: right; }
@@ -366,6 +379,7 @@
     <input type="range" id="seek" min="0" max="1" step="0.01" value="0" aria-label="재생 위치">
     <span class="time" id="time">0:00 / 0:00</span>
   </div>
+  <div class="scenes" id="scenes"></div>
   <div class="save">
     <button class="btn primary" id="saveMp4">MP4 저장</button>
     <button class="btn" id="saveGif">GIF 저장</button>

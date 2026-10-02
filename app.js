@@ -37,13 +37,16 @@ let still = null;
 
 // ---------- 설정 저장 (텍스트만) ----------
 const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font'];
-function saveSettings() {
-  try {
-    const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glowOn: $('glowOn').checked, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans, imgMode: state.imgMode,
+function settingsObj() {
+  const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glowOn: $('glowOn').checked, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans, imgMode: state.imgMode,
       bokeh: $('bokeh').checked, gMain: $('gMain').checked, gPron: $('gPron').checked, gTrans: $('gTrans').checked,
       align: state.align, nextLine: $('nextLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked };
-    for (const f of FIELDS) o[f] = $(f).value;
-    localStorage.setItem(STORE, JSON.stringify(o));
+  for (const f of FIELDS) o[f] = $(f).value;
+  return o;
+}
+function saveSettings() {
+  try {
+    localStorage.setItem(STORE, JSON.stringify(settingsObj()));
   } catch (e) {}
 }
 function loadSettings() {
@@ -497,7 +500,8 @@ function blurredBg(it, W, H) {
 
 // 아트 뒤로 번지는 빛. 모양(네모·원)과 크기별로 한 번만 만든다
 function glowImage(it, size, round, u) {
-  const key = 'glow' + size + (round ? 'o' : 's') + [it.fx, it.fy, it.zoom].join();
+  // 주변 빛은 그림에서 번지는 빛이라 그라디언트 맵 색을 따른다(흐린 배경은 원래 색)
+  const key = 'glow' + size + (round ? 'o' : 's') + gmKey() + [it.fx, it.fy, it.zoom].join();
   if (it.cache[key]) return it.cache[key];
   const pad = Math.round(size * 0.45);
   const c = document.createElement('canvas');
@@ -511,7 +515,7 @@ function glowImage(it, size, round, u) {
   if (round) sg.arc(c.width / 2, c.width / 2, size / 2, 0, Math.PI * 2);
   else sg.roundRect(pad, pad, size, size, 14 * u);
   sg.clip();
-  drawCover(sg, it.img, pad, pad, size, size, it);
+  drawCover(sg, srcOf(it), pad, pad, size, size, it);
   sg.restore();
   g.filter = `blur(${size * 0.09}px) saturate(1.8) brightness(1.15)`;
   g.drawImage(src, 0, 0);
@@ -1725,6 +1729,7 @@ function tick(now) {
   render(ctx, stage.width, state.t);
   drawGuides();
   drawWave();
+  sceneTick();
   $('seek').value = Math.min(state.t, T);
   $('time').textContent = `${fmt(Math.min(state.t, T))} / ${fmt(T)}`;
   requestAnimationFrame(tick);
@@ -1735,6 +1740,102 @@ function setPlaying(v) {
   $('play').textContent = v ? '❚❚' : '▶';
   $('play').setAttribute('aria-label', v ? '일시정지' : '재생');
   if (v) restartAudio(); else stopAudio();
+}
+
+// ---------- 장면 카드: 이미지나 가사 줄이 바뀌는 순간마다 한 장 ----------
+const SCENE_MAX = 200;
+function sceneList() {
+  const T = duration();
+  const cuts = new Set([0]);
+  // 이미지가 바뀌는 순간 (초마다는 한 바퀴를 길이만큼 되풀이)
+  if (state.images.length > 1) {
+    const sc = imageSchedule();
+    if (sc.period > 0) {
+      for (let base = 0; base < T && cuts.size < SCENE_MAX; base += sc.period) {
+        for (const sg of sc.segs) if (base + sg.start < T) cuts.add(Math.round((base + sg.start) * 100) / 100);
+      }
+    }
+  }
+  // 가사 줄이 바뀌는 순간
+  const lyr = parseLyrics();
+  if (lyr.lines.length) {
+    const base = lyr.timed ? songBase(lyr) : 0;
+    const shift = parseFloat($('shift').value) || 0;
+    for (const l of lyr.lines) {
+      const at = l.start - base + shift;
+      if (at > 0 && at < T) cuts.add(Math.round(at * 100) / 100);
+    }
+  }
+  const list = [...cuts].sort((a, b) => a - b).slice(0, SCENE_MAX);
+  // 거의 붙은 경계(0.15초 안)는 하나로
+  const out = [];
+  for (const c of list) if (!out.length || c - out[out.length - 1] > 0.15) out.push(c);
+  return out.map((start, i) => ({ start, end: i + 1 < out.length ? out[i + 1] : T }));
+}
+// 카드를 눌렀을 때 보여 줄 시각: 전환·가사 페이드가 끝난 뒤
+function sceneShowAt(sc) {
+  return sc.start + Math.min(0.45, (sc.end - sc.start) / 2);
+}
+
+let sceneSig = '', scenes = [], sceneCheck = 0, sceneOn = -1;
+function sceneSignature() {
+  const imgs = state.images.map((it) => [it.url, it.fx, it.fy, it.zoom, it.sec, it.lsec].join());
+  const sts = state.stickers.map((st) => [st.url, st.x, st.y, st.size, st.rot, st.fx].join());
+  const au = state.audio ? [state.audio.a, state.audio.b].join() : '';
+  return JSON.stringify([settingsObj(), imgs, sts, au, FONT]);
+}
+function buildScenes() {
+  const box = $('scenes');
+  scenes = sceneList();
+  box.innerHTML = '';
+  sceneOn = -1;
+  const TW = 84;
+  scenes.forEach((sc, i) => {
+    const b = document.createElement('button');
+    b.className = 'scene';
+    const c = document.createElement('canvas');
+    c.width = TW; c.height = Math.round(TW * 4 / 3);
+    render(c.getContext('2d'), TW, sceneShowAt(sc));
+    const tm = document.createElement('span');
+    tm.className = 'sc-time';
+    tm.textContent = fmtTenth(sc.start);
+    const l = lyricAt(sceneShowAt(sc));
+    const tx = document.createElement('span');
+    tx.className = 'sc-text';
+    tx.textContent = l && l.text ? l.text : ' ';
+    b.append(c, tm, tx);
+    b.setAttribute('aria-label', `${fmtTenth(sc.start)} 장면`);
+    b.onclick = () => {
+      setPlaying(false);
+      state.t = sceneShowAt(sc);
+    };
+    box.append(b);
+  });
+}
+function sceneTick() {
+  // 바뀐 게 있으면 카드를 다시 그린다. 매 장면마다 그리지 않게 0.5초에 한 번만 본다
+  const now = performance.now();
+  if (!state.busy && !sdrag && now - sceneCheck > 500) {
+    sceneCheck = now;
+    const sig = sceneSignature();
+    if (sig !== sceneSig) { sceneSig = sig; buildScenes(); }
+  }
+  // 지금 보고 있는 장면 표시
+  let on = -1;
+  for (let i = 0; i < scenes.length; i++) if (state.t >= scenes[i].start - 1e-6 && state.t < scenes[i].end) { on = i; break; }
+  if (on !== sceneOn) {
+    const cards = $('scenes').children;
+    if (cards[sceneOn]) cards[sceneOn].classList.remove('on');
+    if (cards[on]) {
+      cards[on].classList.add('on');
+      const box = $('scenes'), el = cards[on];
+      // 줄 안에서만 옆으로 넘긴다(페이지는 안 움직이게)
+      if (el.offsetLeft < box.scrollLeft || el.offsetLeft + el.offsetWidth > box.scrollLeft + box.clientWidth) {
+        box.scrollLeft = el.offsetLeft - box.clientWidth / 2 + el.offsetWidth / 2;
+      }
+    }
+    sceneOn = on;
+  }
 }
 
 // ---------- 저장 ----------
