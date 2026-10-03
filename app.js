@@ -33,7 +33,7 @@ const state = {
   capPos: { dx: 0, dy: 0 },  // 동영상 자막 자리(옮긴 만큼, u 단위)
   imgMode: 'sec',    // 이미지 바꾸는 때: sec(초마다) | lyric(가사 따라)
   // 글자 정렬. 모양마다, 묶음(제목·가사)마다 따로
-  align: { player: { title: 'left', lyric: 'left' }, cd: { title: 'center', lyric: 'center' } },
+  align: { player: { title: 'left', lyric: 'left' }, cd: { title: 'center', lyric: 'center' }, yt: { title: 'center', lyric: 'center' } },
   stickers: [],
   unit: 'line',      // 이미지 저장 단위
 };
@@ -74,7 +74,7 @@ function loadSettings() {
     if (o.imgMode) setSeg('imgMode', o.imgMode);
     for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'prevLine', 'beatSync', 'spin', 'ytDark', 'gapCalc']) if (o[id] != null) $(id).checked = o[id];
     // 예전 저장값(모양마다 정렬 하나)은 두 묶음에 같이 넣는다
-    if (o.align) for (const m of ['player', 'cd']) {
+    if (o.align) for (const m of ['player', 'cd', 'yt']) {
       const v = o.align[m];
       if (typeof v === 'string') state.align[m] = { title: v, lyric: v };
       else if (v) Object.assign(state.align[m], v);
@@ -1772,8 +1772,11 @@ function drawVideoPage(g, W, H, u, t, T) {
   // 자막: 아래쪽 가운데가 기본, 끌어서 옮긴 만큼 이동(영상 안에서만)
   const cap = captionGeom(u);
   const rec = {};
-  drawLyrics(g, cap.cx, v.y + 8 * u, cap.bottom, cap.maxW, u, '#ffffff', 'rgba(255,255,255,0.78)', t,
-    { align: 'center', size: 12, bottom: true, style: lyStyleOf(), record: rec, prev: $('prevLine').checked, next: $('nextLine').checked });
+  // 가사 정렬: 자막 칸 안에서 왼쪽·가운데·오른쪽
+  const cal = alignOf('lyric');
+  const cax = cal === 'left' ? cap.cx - cap.maxW / 2 : cal === 'right' ? cap.cx + cap.maxW / 2 : cap.cx;
+  drawLyrics(g, cax, v.y + 8 * u, cap.bottom, cap.maxW, u, '#ffffff', 'rgba(255,255,255,0.78)', t,
+    { align: cal, size: 12, bottom: true, style: lyStyleOf(), record: rec, prev: $('prevLine').checked, next: $('nextLine').checked });
   if (g === ctx) capRect = rec.rect || null;
   // 아래쪽 조작 막대
   const grad = g.createLinearGradient(0, v.y + v.h - 46 * u, 0, v.y + v.h);
@@ -2887,6 +2890,8 @@ function syncFx() {
   $('gTargets').hidden = state.fx !== 'glitch';
   $('spinRow').hidden = state.mode !== 'cd';
   $('ytDarkRow').hidden = state.mode !== 'yt';
+  // 동영상은 제목·가수 정렬을 쓰지 않는다
+  $('alignTitleRow').hidden = state.mode === 'yt';
   $('discAngleRow').hidden = state.mode !== 'cd';
   $('glowSpreadRow').hidden = state.glow === 'off';
   if ($('lyStyle')) syncLyStyle();
