@@ -139,9 +139,6 @@
   .x { border: 0; background: none; color: var(--dim); cursor: pointer; font-size: 15px; padding: 0 4px; line-height: 1; }
   .x:hover { color: var(--text); }
 
-  .yt-frame iframe { width: 100%; height: auto; aspect-ratio: 16 / 9; border: 0; border-radius: 8px; display: block; }
-  .yt-frame[hidden] { display: none; }
-
   /* 줄마다 설정 */
   details.notes summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--dim); }
   details.notes[open] summary { margin-bottom: 10px; }
@@ -378,15 +375,6 @@
     <div class="group">
       <input type="text" id="title" placeholder="제목">
       <input type="text" id="artist" placeholder="가수">
-    </div>
-    <div class="group">
-      <span class="gl">유튜브</span>
-      <div class="row"><input type="text" id="ytUrl" placeholder="https://youtu.be/…" aria-label="유튜브 링크"><button class="btn" id="ytLoad">불러오기</button></div>
-      <div class="group" id="ytBox" hidden>
-        <div class="yt-frame" id="ytFrame"></div>
-        <div class="row"><button class="btn" id="ytThumb">썸네일을 이미지로</button><span class="grow"></span><button class="x" id="ytRemove" aria-label="유튜브 빼기">×</button></div>
-      </div>
-      <div class="msg" id="ytMsg"></div>
     </div>
     <div class="group">
       <span class="gl">노래 파일</span>

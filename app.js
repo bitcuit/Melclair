@@ -537,7 +537,6 @@ function audioCtx() {
 }
 
 async function loadAudio(file) {
-  if (ytReady) ytPlayer.pauseVideo();
   const msg = $('status');
   msg.textContent = '노래 읽는 중';
   try {
@@ -627,131 +626,12 @@ function removeAudio() {
   $('audioDrop').hidden = false;
   $('tap').disabled = true;
   state.t = 0;
-  // 유튜브가 불러져 있으면 소리를 유튜브로 되돌린다
-  if (ytReady) useYoutubeAsSong();
   updateInfo();
-}
-
-// ---------- 유튜브 ----------
-// 영상을 내려받지 않는다. 링크로 제목·썸네일을 가져오고, 공식 플레이어를 띄워 미리보기 소리로만 쓴다.
-// 그래서 MP4에는 유튜브 소리가 들어가지 않는다.
-let ytPlayer = null, ytReady = false, ytApi = null, ytVideo = null;
-function ytIdOf(url) {
-  const m = String(url).match(/(?:[?&]v=|youtu\.be\/|\/shorts\/|\/embed\/|\/live\/)([\w-]{11})/);
-  return m ? m[1] : /^[\w-]{11}$/.test(String(url).trim()) ? String(url).trim() : null;
-}
-function loadYtApi() {
-  if (!ytApi) {
-    ytApi = new Promise((res) => {
-      window.onYouTubeIframeAPIReady = res;
-      const sc = document.createElement('script');
-      sc.src = 'https://www.youtube.com/iframe_api';
-      document.head.append(sc);
-    });
-  }
-  return ytApi;
-}
-// "가수 - 제목", "가수 '제목' MV" 꼴을 나눈다. 안 되면 영상 제목과 채널 이름
-function splitYtTitle(title, author) {
-  const clean = (x) => x.replace(/\s*[(\[](?:official|공식|mv|m\/v|music video|lyrics?|audio|가사)[^)\]]*[)\]]\s*/gi, ' ').replace(/\s+(?:MV|M\/V)\s*$/i, '').trim();
-  let m = title.match(/^(.+?)\s+[-–—]\s+(.+)$/);
-  if (m) return { artist: clean(m[1]), title: clean(m[2]) };
-  m = title.match(/^(.+?)\s*['‘"“「『<](.+?)['’"”」』>]/);
-  if (m) return { artist: clean(m[1]), title: clean(m[2]) };
-  return { artist: author.replace(/\s*-\s*Topic$/i, '').replace(/\s*[\[(].*?[\])]\s*/g, ' ').trim(), title: clean(title) };
-}
-async function loadYoutube() {
-  const msg = $('ytMsg');
-  const id = ytIdOf($('ytUrl').value);
-  if (!id) { msg.textContent = '유튜브 영상 주소를 넣어 주세요'; return; }
-  msg.textContent = '불러오는 중';
-  try {
-    const info = await (await fetch('https://www.youtube.com/oembed?format=json&url=' + encodeURIComponent('https://www.youtube.com/watch?v=' + id))).json();
-    const t = splitYtTitle(info.title || '', info.author_name || '');
-    if (t.title) $('title').value = t.title;
-    if (t.artist) $('artist').value = t.artist;
-    saveSettings();
-  } catch (e) {
-    msg.textContent = '영상 정보를 못 가져왔습니다. 주소와 인터넷 연결을 확인해 주세요';
-    return;
-  }
-  ytVideo = id;
-  $('ytBox').hidden = false;
-  if (location.protocol === 'file:') {
-    msg.textContent = '유튜브 소리는 "Spincard 열기"로 열었을 때만 나옵니다. 제목·썸네일은 지금도 쓸 수 있습니다';
-    $('ytFrame').hidden = true;
-    return;
-  }
-  $('ytFrame').hidden = false;
-  await loadYtApi();
-  if (ytPlayer) { ytPlayer.destroy(); ytPlayer = null; }
-  ytReady = false;
-  $('ytFrame').innerHTML = '<div id="ytPlayerEl"></div>';
-  ytPlayer = new YT.Player('ytPlayerEl', {
-    videoId: id,
-    playerVars: { playsinline: 1, rel: 0 },
-    events: {
-      onReady: () => { ytReady = true; if (!state.audio || state.audio.yt) useYoutubeAsSong(); else ytMessage(); },
-      onError: (e) => {
-        msg.textContent = e.data === 101 || e.data === 150 ? '이 영상은 다른 곳에서 재생할 수 없게 막혀 있습니다' : `유튜브 재생 오류(${e.data})`;
-      },
-    },
-  });
-}
-function ytMessage() {
-  $('ytMsg').textContent = state.audio && !state.audio.yt
-    ? '소리는 넣은 노래 파일로 냅니다'
-    : 'MP4로 저장할 때 유튜브 소리는 안 들어갑니다. 소리까지 넣으려면 노래 파일을 넣으세요';
-}
-function useYoutubeAsSong() {
-  stopAudio();
-  const D = ytPlayer.getDuration() || 1;
-  state.audio = { yt: true, name: ytVideo, buf: { duration: D }, peaks: null, env: null, onsets: [], a: 0, b: Math.min(15, D) };
-  $('waveRow').hidden = false;
-  $('tap').disabled = false;
-  syncSegInputs();
-  state.t = 0;
-  restartAudio();
-  updateInfo();
-  ytMessage();
-}
-function removeYoutube() {
-  if (state.audio && state.audio.yt) {
-    stopAudio();
-    state.audio = null;
-    $('waveRow').hidden = true;
-    $('tap').disabled = true;
-    state.t = 0;
-  }
-  if (ytPlayer) { ytPlayer.destroy(); ytPlayer = null; }
-  ytReady = false;
-  ytVideo = null;
-  $('ytBox').hidden = true;
-  $('ytMsg').textContent = '';
-  updateInfo();
-}
-// 썸네일을 이미지로: 큰 것부터 받아 보고, 없으면(작은 회색 그림이 오면) 작은 것으로
-async function addYtThumb() {
-  if (!ytVideo) return;
-  for (const name of ['maxresdefault', 'sddefault', 'hqdefault']) {
-    try {
-      const res = await fetch(`https://i.ytimg.com/vi/${ytVideo}/${name}.jpg`);
-      if (!res.ok) continue;
-      const blob = await res.blob();
-      const bmp = await createImageBitmap(blob);
-      const ok = bmp.width > 200;
-      bmp.close();
-      if (!ok) continue;
-      await addFiles([new File([blob], `${ytVideo}.jpg`, { type: 'image/jpeg' })]);
-      return;
-    } catch (e) {}
-  }
-  $('ytMsg').textContent = '썸네일을 못 가져왔습니다';
 }
 
 function levelAt(t) {
   const au = state.audio;
-  if (!au || still || !au.env) return 0.5;
+  if (!au || still) return 0.5;
   const i = Math.floor((au.a + t) * ENV_RATE);
   return au.env[Math.max(0, Math.min(au.env.length - 1, i))];
 }
@@ -760,18 +640,11 @@ function levelAt(t) {
 let src = null, playStart = 0, playFrom = 0;
 function stopAudio() {
   if (src) { try { src.stop(); } catch (e) {} src.disconnect(); src = null; }
-  if (ytReady && ytPlayer.pauseVideo) ytPlayer.pauseVideo();
 }
 function restartAudio() {
   stopAudio();
   const au = state.audio;
   if (!au || !state.playing || state.busy) return;
-  if (au.yt) {
-    if (!ytReady) return;
-    ytPlayer.seekTo(au.a + state.t, true);
-    ytPlayer.playVideo();
-    return;
-  }
   const ac = audioCtx();
   src = ac.createBufferSource();
   src.buffer = au.buf;
@@ -786,12 +659,6 @@ function restartAudio() {
   src.start(0, au.a + state.t);
 }
 function audioClock() {
-  if (state.audio.yt) {
-    const el = ytPlayer.getCurrentTime() - state.audio.a;
-    // 구간 끝에 닿으면 처음으로 (박자 찍기 중에는 계속)
-    if (!state.tap && el >= duration()) { ytPlayer.seekTo(state.audio.a, true); return 0; }
-    return Math.max(0, el);
-  }
   // 박자 찍기 중에는 구간 끝을 넘어서도 흐른다
   const el = playFrom + (actx.currentTime - playStart);
   return state.tap ? el : el % duration();
@@ -817,14 +684,7 @@ function drawWave() {
   g.globalAlpha = 0.08;
   g.fillRect(xa, 0, xb - xa, h);
   g.globalAlpha = 1;
-  const bars = au.peaks ? Math.floor(w / (2 * dpr)) : 0;
-  if (!au.peaks) {
-    // 유튜브는 소리 파형을 못 읽어서 가운데 선만 긋는다
-    g.fillStyle = dim;
-    g.fillRect(0, h / 2 - dpr / 2, w, dpr);
-    g.fillStyle = text;
-    g.fillRect(xa, h / 2 - dpr, xb - xa, dpr * 2);
-  }
+  const bars = Math.floor(w / (2 * dpr));
   for (let i = 0; i < bars; i++) {
     const p = au.peaks[Math.floor((i / bars) * au.peaks.length)];
     const x = (i / bars) * w;
@@ -1911,8 +1771,6 @@ function updateInfo() {
   if (p.over) s += ' — 트위터 GIF는 350장까지라 구간을 줄여야 합니다';
   else if (p.lowered) s += ` · 트위터 350장 한도라 초당 ${p.fps}장으로 낮춤`;
   $('exportInfo').textContent = s;
-  const small = $('saveMp4').querySelector('small');
-  if (small) small.textContent = !state.audio ? '소리 없음' : state.audio.yt ? '유튜브 소리 없음' : '소리 포함';
 }
 
 
@@ -1922,7 +1780,7 @@ function tick(now) {
   last = now;
   const T = duration();
   if (state.playing && !state.busy) {
-    if (state.audio && (state.audio.yt ? ytReady : src && actx)) state.t = audioClock();
+    if (state.audio && src && actx) state.t = audioClock();
     else state.t = (state.t + dt) % T;
   }
   sizeStage();
@@ -2289,8 +2147,7 @@ async function saveMp4() {
   const au = state.audio;
 
   const vcfg = { codec: 'avc1.640028', width: W, height: H, bitrate: 8e6, framerate: MP4_FPS };
-  // 유튜브 소리는 내려받지 않으므로 MP4에 들어가지 않는다
-  const acfg = au && !au.yt && { codec: 'mp4a.40.2', sampleRate: au.buf.sampleRate, numberOfChannels: Math.min(2, au.buf.numberOfChannels), bitrate: 192000 };
+  const acfg = au && { codec: 'mp4a.40.2', sampleRate: au.buf.sampleRate, numberOfChannels: Math.min(2, au.buf.numberOfChannels), bitrate: 192000 };
   if (!(await VideoEncoder.isConfigSupported(vcfg)).supported
     || (acfg && !(await AudioEncoder.isConfigSupported(acfg)).supported)) {
     $('status').textContent = '이 컴퓨터에서는 MP4 인코딩을 쓸 수 없습니다';
@@ -2618,10 +2475,6 @@ audioDrop.addEventListener('drop', (e) => {
 $('audioRemove').addEventListener('click', removeAudio);
 
 $('findLyrics').addEventListener('click', findLyrics);
-$('ytLoad').addEventListener('click', loadYoutube);
-$('ytUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') loadYoutube(); });
-$('ytRemove').addEventListener('click', removeYoutube);
-$('ytThumb').addEventListener('click', addYtThumb);
 $('refit').addEventListener('click', () => {
   for (const it of state.images) it.lsec = undefined;
   updateInfo();
