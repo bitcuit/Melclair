@@ -1,6 +1,6 @@
 'use strict';
 
-const BASE_FONT = '"Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif';
+const BASE_FONT = '"Noto Sans KR", "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif';
 let FONT = BASE_FONT;
 let LFONT = BASE_FONT;   // 가사 글꼴(따로 안 고르면 FONT와 같음)
 const FADE = 0.35;          // 이미지·가사 전환에 걸리는 초
@@ -3206,6 +3206,125 @@ $('eyeBtn').addEventListener('click', () => {
   $('eyeBtn').setAttribute('aria-label', fxVisible ? '효과 숨기기' : '효과 보이기');
 });
 
+// ---------- 화이트 모드 ----------
+$('themeBtn').addEventListener('click', () => {
+  const light = document.documentElement.dataset.theme !== 'light';
+  if (light) document.documentElement.dataset.theme = 'light';
+  else delete document.documentElement.dataset.theme;
+  $('themeBtn').setAttribute('aria-label', light ? '다크 모드' : '화이트 모드');
+  try { localStorage.setItem('spincard:theme', light ? 'light' : 'dark'); } catch (e) {}
+});
+if (document.documentElement.dataset.theme === 'light') $('themeBtn').setAttribute('aria-label', '다크 모드');
+
+// ---------- 웹폰트 추가 ----------
+// 구글 폰트·웹폰트 CSS 주소나 글꼴 파일(woff2·ttf·otf) 주소. <link>나 @import 코드를 붙여넣어도 주소만 골라낸다
+const WEBFONT_KEY = 'spincard:webfonts';
+let webFonts = [];   // { url, families: [이름] }
+function saveWebFonts() { try { localStorage.setItem(WEBFONT_KEY, JSON.stringify(webFonts)); } catch (e) {} }
+function addFontOption(name) {
+  for (const sel of [$('font'), $('lyFont')]) {
+    if ([...sel.options].some((o) => o.value === name)) continue;
+    sel.add(new Option(name, name));
+  }
+}
+function removeFontOption(name) {
+  for (const sel of [$('font'), $('lyFont')]) {
+    const o = [...sel.options].find((x) => x.value === name);
+    if (o) o.remove();
+  }
+  if (!$('font').value) $('font').value = 'Noto Sans KR';
+  if (!$('lyFont').value && $('lyFont').selectedIndex < 0) $('lyFont').value = '';
+}
+// 주소를 실제로 불러온다. 성공하면 글꼴 이름들을 돌려준다
+async function loadWebFont(url) {
+  const file = /\.(woff2?|ttf|otf)(\?|#|$)/i.test(url);
+  if (file) {
+    const name = decodeURIComponent(url.split('/').pop().split(/[?#]/)[0].replace(/\.[^.]+$/, '')).replace(/[-_]+/g, ' ').trim() || '웹폰트';
+    const face = new FontFace(name, `url("${url}")`);
+    await face.load();
+    document.fonts.add(face);
+    return [name];
+  }
+  let families = [];
+  try {
+    const u = new URL(url);
+    if (/fonts\.googleapis\.com$/.test(u.hostname)) {
+      families = u.searchParams.getAll('family').map((f) => f.split(':')[0].replace(/\+/g, ' ').trim());
+    }
+  } catch (e) { throw new Error('주소 형식'); }
+  if (!families.length) {
+    const css = await (await fetch(url)).text();
+    families = [...css.matchAll(/font-family\s*:\s*['"]?([^;'"]+)['"]?/gi)].map((m) => m[1].trim());
+  }
+  families = [...new Set(families)].filter(Boolean);
+  if (!families.length) throw new Error('이름 없음');
+  if (![...document.querySelectorAll('link[data-webfont]')].some((l) => l.href === url)) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = url;
+    link.dataset.webfont = '1';
+    document.head.append(link);
+    await new Promise((res) => { link.onload = res; link.onerror = res; });
+  }
+  return families;
+}
+function renderWebFonts() {
+  const box = $('webFontList');
+  box.innerHTML = '';
+  for (const wf of webFonts) {
+    for (const name of wf.families) {
+      const row = document.createElement('div');
+      row.className = 'font-item';
+      const sp = document.createElement('span');
+      sp.textContent = name;
+      sp.style.fontFamily = `"${name}", ${BASE_FONT}`;
+      const x = document.createElement('button');
+      x.className = 'x';
+      x.textContent = '×';
+      x.setAttribute('aria-label', `${name} 빼기`);
+      x.onclick = () => {
+        wf.families = wf.families.filter((f) => f !== name);
+        if (!wf.families.length) webFonts = webFonts.filter((w) => w !== wf);
+        removeFontOption(name);
+        saveWebFonts();
+        renderWebFonts();
+        applyFont();
+      };
+      row.append(sp, x);
+      box.append(row);
+    }
+  }
+}
+async function addWebFont() {
+  const raw = $('webFontUrl').value.trim();
+  const m = raw.match(/https?:\/\/[^\s"'()<>]+/);
+  const msg = $('webFontMsg');
+  if (!m) { msg.textContent = '웹폰트 주소를 넣어 주세요'; return; }
+  const url = m[0].replace(/&amp;/g, '&');
+  msg.textContent = '불러오는 중';
+  try {
+    const families = await loadWebFont(url);
+    for (const f of families) addFontOption(f);
+    if (!webFonts.some((w) => w.url === url)) webFonts.push({ url, families });
+    saveWebFonts();
+    renderWebFonts();
+    $('webFontUrl').value = '';
+    msg.textContent = `${families.join(', ')} 추가됨`;
+  } catch (e) {
+    msg.textContent = '글꼴을 불러오지 못했습니다. 구글 폰트 주소나 글꼴 파일(woff2·ttf·otf) 주소인지 확인해 주세요';
+  }
+}
+function restoreWebFonts() {
+  try { webFonts = JSON.parse(localStorage.getItem(WEBFONT_KEY) || '[]'); } catch (e) { webFonts = []; }
+  for (const wf of webFonts) {
+    for (const f of wf.families) addFontOption(f);
+    loadWebFont(wf.url).then(() => applyFont()).catch(() => {});
+  }
+  renderWebFonts();
+}
+$('webFontAdd').addEventListener('click', addWebFont);
+$('webFontUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') addWebFont(); });
+
 // ---------- 탭 ----------
 const TAB_KEY = 'spincard:tab';
 function showTab(name) {
@@ -3273,7 +3392,11 @@ $('rawToggle').addEventListener('click', () => {
 let notesTimer = 0;
 $('lyrics').addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(renderNotes, 400); });
 
+restoreWebFonts();
 loadSettings();
+// 예전에 고른 글꼴이 목록에 없으면 본고딕으로
+if (!$('font').value) $('font').value = 'Noto Sans KR';
+if ([...$('lyFont').options].every((o) => o.value !== $('lyFont').value)) $('lyFont').value = '';
 $('discAngleVal').textContent = `${$('discAngle').value}°`;
 syncLyStyle();
 syncImgMode();

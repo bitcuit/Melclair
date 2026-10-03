@@ -4,11 +4,11 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Spincard</title>
+<script>try { if (localStorage.getItem('spincard:theme') === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) {}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@500;600;700&family=IBM+Plex+Sans+KR:wght@500;600;700&family=Gowun+Dodum&family=Do+Hyeon&family=Jua&family=Black+Han+Sans&family=Orbit&family=Noto+Serif+KR:wght@500;600;700&family=Nanum+Myeongjo:wght@400;700&family=Gowun+Batang:wght@400;700&family=Hahmlet:wght@500;600;700&family=Song+Myung&family=Nanum+Pen+Script&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=Noto+Serif+KR:wght@400;500;600;700&family=Hahmlet:wght@500;600&display=swap">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri/dist/galmuri.css">
 <style>
   /* 불 꺼진 감상실: 미리보기가 이 방의 유일한 빛 */
   :root {
@@ -26,6 +26,27 @@
     --raise: #2f2a37;
     --stage: #0c0b0f;
     --sel: #a593ff;       /* 고른 것·지금 위치 */
+    --glass: rgba(236,232,241,.06);
+    --glass-2: rgba(236,232,241,.12);
+  }
+  /* 화이트 모드 */
+  :root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f4f2f6;
+    --panel: #ffffff;
+    --line: #e6e2ea;
+    --line-2: #d4cfda;
+    --text: #1d1a22;
+    --dim: #6f6979;
+    --faint: #a29cab;
+    --accent: #1d1a22;
+    --accent-text: #f6efe2;
+    --soft: #f1eef4;
+    --raise: #e7e2ec;
+    --stage: #e6e2ea;
+    --sel: #6b55e6;
+    --glass: rgba(255,255,255,.7);
+    --glass-2: rgba(255,255,255,.95);
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -44,7 +65,7 @@
     grid-area: top; display: flex; align-items: center; gap: 16px; padding: 0 16px 0 20px;
     background: var(--panel); border-bottom: 1px solid var(--line);
   }
-  .brand { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; width: 330px; flex: none; }
+  .brand { font-weight: 700; font-size: 15px; letter-spacing: -0.01em; flex: none; margin-right: 8px; }
   .grow { flex: 1; }
   .status { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 420px; }
 
@@ -326,7 +347,7 @@
   #seek { accent-color: var(--accent); }
   .btn { background: var(--soft); }
   .btn:hover { background: var(--raise); }
-  .btn.primary:hover { opacity: 1; background: #fff6e6; }
+  .btn.primary:hover { opacity: .9; }
   .file-row, .ledit { background: var(--bg); }
   .lcard, .st-row { background: color-mix(in srgb, var(--bg) 50%, transparent); }
 
@@ -342,8 +363,18 @@
   }
   #stage { position: relative; z-index: 1; box-shadow: 0 28px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.04); }
   .eye, .canvas-hint { z-index: 2; }
-  .eye { background: rgba(236,232,241,.06); border-color: rgba(236,232,241,.12); color: var(--text); backdrop-filter: blur(8px); }
-  .eye:hover { background: rgba(236,232,241,.12); }
+  .eye { background: var(--glass); border-color: var(--line); color: var(--text); backdrop-filter: blur(8px); }
+  .eye:hover { background: var(--glass-2); }
+  .theme-btn { width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--line); background: var(--soft); color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0; }
+  .theme-btn:hover { background: var(--raise); }
+  .theme-btn svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+  :root[data-theme="light"] .theme-btn .moon, :root:not([data-theme="light"]) .theme-btn .sun { display: none; }
+  :root[data-theme="light"] #stage { box-shadow: 0 24px 70px rgba(40,30,60,.18), 0 0 0 1px rgba(0,0,0,.04); }
+  :root[data-theme="light"] .canvas-wrap::before { opacity: .55; }
+  .font-list { display: flex; flex-direction: column; gap: 4px; }
+  .font-list:empty { display: none; }
+  .font-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--bg); font-size: 13px; }
+  .font-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .canvas-hint { background: rgba(236,232,241,.12); backdrop-filter: blur(10px); }
   .timeline { background: var(--panel); }
   .wave { background: var(--bg); }
@@ -373,6 +404,10 @@
   <label class="check" id="ytDarkRow" hidden><input type="checkbox" id="ytDark" checked>어두운 화면</label>
   <span class="grow"></span>
   <span class="status" id="status"></span>
+  <button class="theme-btn" id="themeBtn" aria-label="화이트 모드">
+    <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+    <svg class="moon" viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>
+  </button>
   <div class="export">
     <button class="btn primary" id="exportBtn" aria-expanded="false">내보내기</button>
     <div class="pop" id="exportPop" hidden>
@@ -543,40 +578,20 @@
       <span class="gl">글꼴</span>
       <div class="row"><span class="lbl">화면 글자</span>
       <select id="font" style="width:180px;flex:none">
-        <option value="Pretendard">프리텐다드</option>
         <option value="Noto Sans KR">본고딕</option>
-        <option value="IBM Plex Sans KR">IBM Plex Sans KR</option>
-        <option value="Gowun Dodum">고운 돋움</option>
-        <option value="Do Hyeon">도현</option>
-        <option value="Jua">주아</option>
-        <option value="Black Han Sans">검은고딕</option>
-        <option value="Orbit">오르빗</option>
-        <option value="Galmuri11">갈무리 (픽셀)</option>
         <option value="Noto Serif KR">본명조</option>
-        <option value="Nanum Myeongjo">나눔명조</option>
-        <option value="Gowun Batang">고운 바탕</option>
-        <option value="Hahmlet">함렛</option>
-        <option value="Song Myung">송명</option>
-        <option value="Nanum Pen Script">나눔손글씨 펜</option>
       </select></div>
       <div class="row"><span class="lbl">가사</span>
       <select id="lyFont" style="width:180px;flex:none"><option value="">화면 글자와 같게</option>
-        <option value="Pretendard">프리텐다드</option>
         <option value="Noto Sans KR">본고딕</option>
-        <option value="IBM Plex Sans KR">IBM Plex Sans KR</option>
-        <option value="Gowun Dodum">고운 돋움</option>
-        <option value="Do Hyeon">도현</option>
-        <option value="Jua">주아</option>
-        <option value="Black Han Sans">검은고딕</option>
-        <option value="Orbit">오르빗</option>
-        <option value="Galmuri11">갈무리 (픽셀)</option>
         <option value="Noto Serif KR">본명조</option>
-        <option value="Nanum Myeongjo">나눔명조</option>
-        <option value="Gowun Batang">고운 바탕</option>
-        <option value="Hahmlet">함렛</option>
-        <option value="Song Myung">송명</option>
-        <option value="Nanum Pen Script">나눔손글씨 펜</option>
       </select></div>
+      <div class="row">
+        <input type="text" id="webFontUrl" placeholder="https://fonts.googleapis.com/css2?family=…" aria-label="웹폰트 주소">
+        <button class="btn" id="webFontAdd">추가</button>
+      </div>
+      <div class="msg" id="webFontMsg"></div>
+      <div class="font-list" id="webFontList"></div>
     </div>
     <div class="group">
       <span class="gl">정렬</span>
