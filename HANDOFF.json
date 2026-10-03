@@ -1,10 +1,10 @@
 {
-  "at": "2026-10-03 11:00",
+  "at": "2026-10-03 11:50",
   "by": "claude-code",
-  "doing": "멈춘 화면을 이미지 저장 모습과 맞추고, 편집 화면에서만 효과를 숨기는 눈 아이콘 추가",
+  "doing": "유튜브 링크로 제목·썸네일 가져오기와 미리보기 소리 재생 추가, Spincard 열기로 띄우기",
   "where": "app.js render() / drawLyrics() / drawArt() / saveMp4() / openPicker()",
   "state": "돌아감",
-  "next": "실제 마우스로 탭·스티커 선택·끌기·단축키를 써 보고 어색한 곳 다듬기",
+  "next": "Spincard 열기로 열어 유튜브 링크를 실제로 넣어 보고 박자 찍기까지 써 보기",
   "blocked": "",
   "session": { "id": "8976c071-774d-442f-9659-8d1393cee662", "title": "", "tool": "claude-code" }
 }
