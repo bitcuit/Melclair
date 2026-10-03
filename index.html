@@ -494,7 +494,15 @@
         </div>
         <input type="color" id="bgColor" value="#232220" aria-label="배경 색">
       </div>
-      <label class="check"><input type="checkbox" id="glowOn" checked>주변 빛</label>
+      <div class="row">
+        <span class="lbl">주변 빛</span>
+        <div class="seg" id="glow">
+          <button data-v="off" aria-pressed="false">끔</button>
+          <button data-v="soft" aria-pressed="true">은은하게</button>
+          <button data-v="vivid" aria-pressed="false">화려하게</button>
+        </div>
+      </div>
+      <div class="row" id="glowAmtRow"><span class="lbl">빛 세기</span><input type="range" id="glowAmt" min="0" max="150" step="5" value="100" style="flex:1;accent-color:var(--text)"></div>
     </div>
   </div>
 

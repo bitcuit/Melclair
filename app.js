@@ -26,6 +26,7 @@ const state = {
   tap: null,         // 박자 찍기 중이면 { texts, stamps }
   fx: 'fade',        // 가사 효과
   imgTrans: 'fade',  // 이미지가 바뀔 때
+  glow: 'soft',      // 주변 빛: off | soft | vivid
   imgMode: 'sec',    // 이미지 바꾸는 때: sec(초마다) | lyric(가사 따라)
   // 글자 정렬. 모양마다, 묶음(제목·가사)마다 따로
   align: { player: { title: 'left', lyric: 'left' }, cd: { title: 'center', lyric: 'center' } },
@@ -36,9 +37,9 @@ const state = {
 let still = null;
 
 // ---------- 설정 저장 (텍스트만) ----------
-const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font'];
+const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font', 'glowAmt'];
 function settingsObj() {
-  const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glowOn: $('glowOn').checked, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans, imgMode: state.imgMode,
+  const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glow: state.glow, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans, imgMode: state.imgMode,
       bokeh: $('bokeh').checked, gMain: $('gMain').checked, gPron: $('gPron').checked, gTrans: $('gTrans').checked,
       align: state.align, nextLine: $('nextLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked };
   for (const f of FIELDS) o[f] = $(f).value;
@@ -57,7 +58,9 @@ function loadSettings() {
     if (o.mode) setSeg('mode', o.mode);
     if (o.bgMode) setSeg('bgMode', o.bgMode);
     if (o.fx) setSeg('fx', o.fx);
-    if (o.glowOn != null) $('glowOn').checked = o.glowOn;
+    // 예전 저장값(켬/끔 체크)도 읽는다
+    if (o.glow) setSeg('glow', o.glow);
+    else if (o.glowOn === false) setSeg('glow', 'off');
     if (o.imgGlitch != null) $('imgGlitch').checked = o.imgGlitch;
     if (o.imgTrans) setSeg('imgTrans', o.imgTrans);
     if (o.imgMode) setSeg('imgMode', o.imgMode);
@@ -488,7 +491,9 @@ function srcOf(it) {
 
 // 흐린 배경은 무거워서 크기별로 한 번만 만든다
 function blurredBg(it, W, H) {
-  const key = 'bg' + W;
+  // 화려하게일 때는 어두운 막을 옅게 해서 색이 살게
+  const vivid = state.glow === 'vivid';
+  const key = 'bg' + W + (vivid ? 'v' : '');
   if (it.cache[key]) return it.cache[key];
   const c = document.createElement('canvas');
   c.width = W; c.height = H;
@@ -497,13 +502,13 @@ function blurredBg(it, W, H) {
   g.filter = `blur(${r}px) saturate(1.2)`;
   drawCover(g, it.img, -r * 2, -r * 2, W + r * 4, H + r * 4);
   g.filter = 'none';
-  g.fillStyle = 'rgba(0,0,0,0.38)';
+  g.fillStyle = vivid ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.38)';
   g.fillRect(0, 0, W, H);
   it.cache[key] = c;
   return c;
 }
 
-// 아트 뒤로 번지는 빛. 모양(네모·원)과 크기별로 한 번만 만든다
+// 아트 뒤로 번지는 빛(은은하게). 모양(네모·원)과 크기별로 한 번만 만든다
 function glowImage(it, size, round, u) {
   // 주변 빛은 그림에서 번지는 빛이라 그라디언트 맵 색을 따른다(흐린 배경은 원래 색)
   const key = 'glow' + size + (round ? 'o' : 's') + gmKey() + [it.fx, it.fy, it.zoom].join();
@@ -763,9 +768,14 @@ async function findLyrics() {
     const q = new URLSearchParams({ track_name: title });
     if (artist) q.set('artist_name', artist);
     let list = await (await fetch('https://lrclib.net/api/search?' + q)).json();
+    const search = async (params) => (await fetch('https://lrclib.net/api/search?' + new URLSearchParams(params))).json();
     if (!list.length && artist) {
-      list = await (await fetch('https://lrclib.net/api/search?' + new URLSearchParams({ q: artist + ' ' + title }))).json();
+      // "제목 - 가수" 꼴로 올라온 영상은 둘이 뒤바뀌어 있을 수 있다
+      list = await search({ track_name: artist, artist_name: title });
+      if (list.length) { $('title').value = artist; $('artist').value = title; }
     }
+    if (!list.length && artist) list = await search({ q: artist + ' ' + title });
+    if (!list.length) list = await search({ track_name: title });
     const D = state.audio ? state.audio.buf.duration : null;
     const near = (x) => (D ? Math.abs((x.duration || 0) - D) : 0);
     const synced = list.filter((x) => x.syncedLyrics).sort((x, y) => near(x) - near(y));
@@ -1103,13 +1113,78 @@ function drawBokeh(g, x, y, w, h, t) {
 }
 
 // 아트(또는 디스크) 뒤에서 번져 나오는 빛. 노래가 있으면 소리 크기를 따라 숨 쉰다
+// 화려하게: 그림 가장자리 줄을 바깥으로 길게 늘여 색을 넓게 퍼뜨린 뒤 크게 흐리고 채도·밝기를 올린다
+function vividGlowImage(it, size, u) {
+  const key = 'vglow' + size + gmKey() + [it.fx, it.fy, it.zoom].join();
+  if (it.cache[key]) return it.cache[key];
+  const art = document.createElement('canvas');
+  art.width = art.height = size;
+  drawCover(art.getContext('2d'), srcOf(it), 0, 0, size, size, it);
+  const pad = Math.round(size * 0.8);
+  const S = size + pad * 2;
+  const ext = document.createElement('canvas');
+  ext.width = ext.height = S;
+  const e = ext.getContext('2d');
+  const k = Math.max(2, Math.round(size * 0.04)); // 가장자리 줄 두께
+  e.drawImage(art, pad, pad);
+  e.drawImage(art, 0, 0, size, k, pad, 0, size, pad);                       // 위
+  e.drawImage(art, 0, size - k, size, k, pad, pad + size, size, pad);       // 아래
+  e.drawImage(art, 0, 0, k, size, 0, pad, pad, size);                       // 왼쪽
+  e.drawImage(art, size - k, 0, k, size, pad + size, pad, pad, size);       // 오른쪽
+  e.drawImage(art, 0, 0, k, k, 0, 0, pad, pad);                             // 모서리
+  e.drawImage(art, size - k, 0, k, k, pad + size, 0, pad, pad);
+  e.drawImage(art, 0, size - k, k, k, 0, pad + size, pad, pad);
+  e.drawImage(art, size - k, size - k, k, k, pad + size, pad + size, pad, pad);
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.filter = `blur(${size * 0.16}px) saturate(2.6) brightness(1.35)`;
+  g.drawImage(ext, 0, 0);
+  // 바깥으로 갈수록 흐려지게 둥글게 깎는다
+  g.filter = 'none';
+  g.globalCompositeOperation = 'destination-in';
+  const fade = g.createRadialGradient(S / 2, S / 2, size * 0.45, S / 2, S / 2, S / 2);
+  fade.addColorStop(0, 'rgba(0,0,0,1)');
+  fade.addColorStop(1, 'rgba(0,0,0,0)');
+  g.fillStyle = fade;
+  g.fillRect(0, 0, S, S);
+  it.cache[key] = c;
+  return c;
+}
+
 function drawGlow(g, cx, cy, size, round, u, t) {
-  if (!$('glowOn').checked) return;
+  if (state.glow === 'off') return;
   const { a, b, p } = imageAt(t);
   if (!a) return;
   const lv = levelAt(t);
-  const scale = 1 + 0.06 * lv;
-  const alpha = 0.45 + 0.5 * lv;
+  // 빛 세기: 100% 기준. 넘기면 더 진하고 넓게
+  const amt = (parseFloat($('glowAmt').value) || 100) / 100;
+  const spread = 1 + Math.max(0, amt - 1) * 0.3;
+  if (state.glow === 'vivid') {
+    // 넓게 퍼지는 빛 + 아트 바로 옆의 밝은 빛 두 겹. 소리에 맞춰 더 크게 숨 쉰다
+    const wide = (it, w) => {
+      const c = vividGlowImage(it, Math.round(size), u);
+      const sc = c.width * (1 + 0.1 * lv) * spread;
+      g.globalAlpha = Math.min(1, (0.7 + 0.3 * lv) * amt) * w;
+      g.drawImage(c, cx - sc / 2, cy - sc / 2, sc, sc);
+    };
+    const tight = (it, w) => {
+      const c = glowImage(it, Math.round(size), round, u);
+      const sc = c.width * (1.04 + 0.08 * lv) * spread;
+      g.globalAlpha = Math.min(1, (0.75 + 0.25 * lv) * amt) * w;
+      g.drawImage(c, cx - sc / 2, cy - sc / 2, sc, sc);
+    };
+    g.save();
+    g.globalCompositeOperation = 'screen';
+    wide(a, 1);
+    if (b && p > 0) wide(b, p);
+    tight(a, 1);
+    if (b && p > 0) tight(b, p);
+    g.restore();
+    return;
+  }
+  const scale = (1 + 0.06 * lv) * spread;
+  const alpha = Math.min(1, (0.45 + 0.5 * lv) * amt);
   const one = (it, k) => {
     const c = glowImage(it, Math.round(size), round, u);
     const s = c.width * scale;
@@ -2230,7 +2305,7 @@ async function saveMp4() {
 }
 
 // ---------- 연결 ----------
-for (const id of ['mode', 'bgMode', 'fx', 'imgTrans', 'imgMode']) {
+for (const id of ['mode', 'bgMode', 'fx', 'imgTrans', 'imgMode', 'glow']) {
   $(id).addEventListener('click', (e) => {
     const b = e.target.closest('button');
     if (!b) return;
@@ -2251,6 +2326,7 @@ function syncImgMode() {
 function syncFx() {
   $('gTargets').hidden = state.fx !== 'glitch';
   $('spinRow').hidden = state.mode !== 'cd';
+  $('glowAmtRow').hidden = state.glow === 'off';
 }
 for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'beatSync', 'spin']) $(id).addEventListener('change', saveSettings);
 
@@ -2278,7 +2354,6 @@ stickerDrop.addEventListener('dragleave', () => stickerDrop.classList.remove('ov
 stickerDrop.addEventListener('drop', (e) => { e.preventDefault(); stickerDrop.classList.remove('over'); addStickers(e.dataTransfer.files); });
 for (const f of FIELDS) $(f).addEventListener('input', () => { updateInfo(); saveSettings(); });
 
-$('glowOn').addEventListener('change', saveSettings);
 $('imgGlitch').addEventListener('change', saveSettings);
 
 // 그라디언트 맵: 직접 고르기일 때만 색 칸을 보인다
@@ -2327,7 +2402,7 @@ function hitAt(e) {
 }
 function currentImage() { return imageAt(state.t).a; }
 function dropFitCache(it) {
-  for (const k of Object.keys(it.cache)) if (k.startsWith('glow')) delete it.cache[k];
+  for (const k of Object.keys(it.cache)) if (k.startsWith('glow') || k.startsWith('vglow')) delete it.cache[k];
 }
 // 모든 이미지 같이: 지금 이미지의 위치·확대를 나머지에도 똑같이 넣는다
 function syncFit(it) {
