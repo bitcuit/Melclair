@@ -292,6 +292,8 @@
   }
   .pop[hidden] { display: none; }
   .pop select { width: 150px; flex: none; }
+  .pop #rangeRow input { text-align: center; font-variant-numeric: tabular-nums; }
+  .pop #rangeBtns .btn { flex: 1; }
   .pop .info { font-size: 12px; color: var(--dim); font-variant-numeric: tabular-nums; }
   .pop .info:empty { display: none; }
   .pop hr { border: 0; border-top: 1px solid var(--line); margin: 2px 0; }
@@ -459,6 +461,16 @@
           <option value="20" selected>초당 20장</option>
           <option value="25">초당 25장</option>
         </select>
+      </div>
+      <label class="check"><input type="checkbox" id="rangeOn">구간만 저장</label>
+      <div class="row" id="rangeRow" hidden>
+        <input type="text" id="rangeA" aria-label="구간 시작" placeholder="0:00.0">
+        <span class="unit">~</span>
+        <input type="text" id="rangeB" aria-label="구간 끝" placeholder="0:15.0">
+      </div>
+      <div class="row" id="rangeBtns" hidden>
+        <button class="btn sm" id="rangeFromNow">지금 위치를 시작으로</button>
+        <button class="btn sm" id="rangeToNow">지금 위치를 끝으로</button>
       </div>
       <div class="info" id="exportInfo"></div>
       <hr>

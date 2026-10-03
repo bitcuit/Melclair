@@ -2207,8 +2207,34 @@ function sizeStage() {
 }
 
 // 트위터 GIF 한도(350장) 안에 들도록 초당 장 수를 낮춘다
-function gifPlan() {
+// 내보낼 구간(미리보기 시간 기준 [s, e]). 구간만 저장을 끄면 전체
+// 칸에는 노래가 있으면 원곡 시각, 없으면 미리보기 시각을 쓴다
+function songOffset() { return state.audio ? state.audio.a : 0; }
+function exportRange() {
   const T = duration();
+  if (!$('rangeOn').checked) return { s: 0, e: T };
+  const off = songOffset();
+  let a = parseTime($('rangeA').value), b = parseTime($('rangeB').value);
+  a = isNaN(a) ? 0 : a - off;
+  b = isNaN(b) ? T : b - off;
+  a = Math.max(0, Math.min(T - 0.2, a));
+  b = Math.max(a + 0.2, Math.min(T, b));
+  return { s: a, e: b };
+}
+function syncRange() {
+  const on = $('rangeOn').checked;
+  $('rangeRow').hidden = $('rangeBtns').hidden = !on;
+  if (on && !$('rangeA').value) {
+    const off = songOffset();
+    $('rangeA').value = fmtTenth(off);
+    $('rangeB').value = fmtTenth(off + duration());
+  }
+  updateInfo();
+}
+
+function gifPlan() {
+  const R = exportRange();
+  const T = R.e - R.s;
   const want = parseInt($('fps').value, 10);
   let fps = want;
   for (const f of [25, 20, 10, 5]) {
@@ -2217,7 +2243,7 @@ function gifPlan() {
     if (Math.round(T * f) <= GIF_MAX_FRAMES) break;
   }
   const frames = Math.max(1, Math.round(T * fps));
-  return { T, fps, frames, lowered: fps < want, over: frames > GIF_MAX_FRAMES };
+  return { T, start: R.s, fps, frames, lowered: fps < want, over: frames > GIF_MAX_FRAMES };
 }
 
 function updateInfo() {
@@ -2226,7 +2252,7 @@ function updateInfo() {
   refreshThumbSecs();
   if (state.t > T && !state.tap) state.t = 0;
   const p = gifPlan();
-  let s = `${fmt(T)} · GIF ${p.frames}장`;
+  let s = `${$('rangeOn').checked ? '구간 ' : ''}${fmt(p.T)} · GIF ${p.frames}장`;
   if (p.over) s += ' — 트위터 GIF는 350장까지라 구간을 줄여야 합니다';
   else if (p.lowered) s += ` · 트위터 350장 한도라 초당 ${p.fps}장으로 낮춤`;
   if (view.hideFx) s += ' · 효과 숨김 상태로 저장됩니다';
@@ -2848,7 +2874,7 @@ async function saveGif() {
   if (state.busy) { state.cancel = true; return; }
   const { GIFEncoder, quantize, applyPalette } = window.gifenc;
   const W = exportWidth(), H = heightOf(W);
-  const { T, fps, frames } = gifPlan();
+  const { T, start, fps, frames } = gifPlan();
   const delay = 1000 / fps;
 
   const c = document.createElement('canvas');
@@ -2869,7 +2895,7 @@ async function saveGif() {
   try {
     for (let i = 0; i < frames; i++) {
       if (state.cancel) { $('status').textContent = 'GIF 저장을 멈췄습니다'; return; }
-      render(g, W, (i / frames) * T);
+      render(g, W, start + (i / frames) * T);
       const data = g.getImageData(0, 0, W, H).data;
       if (prev && sameFrame(prev, data)) {
         prevDelay += delay;
@@ -2909,7 +2935,9 @@ async function saveMp4() {
     return;
   }
   const W = exportWidth(), H = heightOf(W);
-  const T = duration();
+  // 구간만 저장이면 그 구간만(소리도 그 구간만 잘라 넣는다)
+  const R = exportRange();
+  const T = R.e - R.s;
   const frames = Math.max(1, Math.round(T * MP4_FPS));
   const au = state.audio;
 
@@ -2941,7 +2969,7 @@ async function saveMp4() {
     for (let i = 0; i < frames; i++) {
       if (state.cancel) { $('status').textContent = 'MP4 저장을 멈췄습니다'; ve.close(); return; }
       if (failed) throw failed;
-      render(g, W, i / MP4_FPS);
+      render(g, W, R.s + i / MP4_FPS);
       const vf = new VideoFrame(c, { timestamp: Math.round((i * 1e6) / MP4_FPS), duration: Math.round(1e6 / MP4_FPS) });
       ve.encode(vf, { keyFrame: i % (MP4_FPS * 2) === 0 });
       vf.close();
@@ -2958,7 +2986,7 @@ async function saveMp4() {
       const ae = new AudioEncoder({ output: (ch, meta) => muxer.addAudioChunk(ch, meta), error: (e) => { failed = e; } });
       ae.configure(acfg);
       const sr = acfg.sampleRate, nch = acfg.numberOfChannels;
-      const s0 = Math.floor(au.a * sr), total = Math.floor(T * sr);
+      const s0 = Math.floor((au.a + R.s) * sr), total = Math.floor(T * sr);
       const fadeIn = Math.floor(0.05 * sr), fadeOut = Math.floor(0.4 * sr);
       const chans = [];
       for (let k = 0; k < nch; k++) chans.push(au.buf.getChannelData(k));
@@ -3480,6 +3508,10 @@ function closeExport() {
   $('exportPop').hidden = true;
   $('exportBtn').setAttribute('aria-expanded', 'false');
 }
+$('rangeOn').addEventListener('change', syncRange);
+for (const id of ['rangeA', 'rangeB']) $(id).addEventListener('change', updateInfo);
+$('rangeFromNow').addEventListener('click', () => { $('rangeA').value = fmtTenth(songOffset() + state.t); updateInfo(); });
+$('rangeToNow').addEventListener('click', () => { $('rangeB').value = fmtTenth(songOffset() + state.t); updateInfo(); });
 $('exportBtn').addEventListener('click', () => {
   const open = $('exportPop').hidden;
   $('exportPop').hidden = !open;
