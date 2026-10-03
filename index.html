@@ -54,7 +54,7 @@
     background: var(--bg); color: var(--text);
     font: 13px/1.45 "Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
-    display: grid; grid-template-rows: 52px 1fr; grid-template-columns: 64px 312px 1fr;
+    display: grid; grid-template-rows: 52px 1fr; grid-template-columns: 64px 360px 1fr;
     grid-template-areas: "top top top" "rail panel stage";
     overflow: hidden;
   }
@@ -177,6 +177,20 @@
   .sel-bar input, .lrow input[type=checkbox] { accent-color: var(--text); width: 15px; height: 15px; margin: 0 2px; flex: none; }
   #selCount { font-size: 12px; color: var(--dim); }
   .lcards { display: flex; flex-direction: column; gap: 10px; }
+  input[type=search] { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; outline: none; color: inherit; font: inherit; }
+  .lhead {
+    width: 100%; display: grid; grid-template-columns: 14px 36px 1fr auto; gap: 8px; align-items: center;
+    border: 0; background: var(--soft); color: var(--dim); padding: 6px 10px; cursor: pointer; text-align: left; font-size: 12px;
+  }
+  .lhead:hover { color: var(--text); }
+  .lcard.folded .chev { transform: rotate(-90deg); }
+  .chev { transition: transform .15s; font-size: 10px; }
+  .lh-time { font-variant-numeric: tabular-nums; color: var(--faint); }
+  .lh-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lh-count { color: var(--faint); }
+  .ltext mark { background: color-mix(in srgb, var(--sel) 35%, transparent); color: inherit; border-radius: 2px; }
+  .ledit .row .btn.sm { flex: none; }
+  input.ltime-in { text-align: center; font-variant-numeric: tabular-nums; }
   .lcards[hidden] { display: none; }
   .lcard { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
   .lrow {
@@ -249,7 +263,7 @@
     width: 34px; height: 34px; border-radius: 50%; border: 0; background: var(--accent); color: var(--accent-text);
     cursor: pointer; font-size: 11px; flex: none; display: flex; align-items: center; justify-content: center;
   }
-  .time { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--dim); width: 84px; flex: none; }
+  .time { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--dim); min-width: 84px; flex: none; }
   #seek { flex: 1; accent-color: var(--text); }
   .scenes { display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 2px 2px 6px; }
   .scenes:empty { display: none; }
@@ -564,11 +578,16 @@
         <button class="btn" id="findLyrics">가사 찾기</button>
         <button class="btn" id="tap" disabled>박자 찍기</button>
         <span class="grow"></span>
+        <button class="btn ghost" id="copyLyrics">복사</button>
         <button class="btn ghost" id="rawToggle">텍스트로 편집</button>
       </div>
       <div class="msg" id="lyricMsg"></div>
       <textarea id="lyricInput" class="paste" rows="2" placeholder="가사 붙여넣기 · 한 줄에 한 소절"></textarea>
       <textarea id="lyrics" placeholder="한 줄에 한 소절" hidden></textarea>
+    </div>
+    <div class="row" id="lyricTools" hidden>
+      <input type="search" id="lyricSearch" placeholder="가사 검색" aria-label="가사 검색">
+      <button class="btn ghost" id="foldAll">모두 접기</button>
     </div>
     <div class="sel-bar" id="selBar" hidden>
       <input type="checkbox" id="selAll" aria-label="모두 고르기">
@@ -674,6 +693,7 @@
       <div class="row">
         <span class="lbl">나타날 때</span>
         <div class="seg" id="fx">
+          <button data-v="none" aria-pressed="false">없음</button>
           <button data-v="fade" aria-pressed="true">페이드</button>
           <button data-v="glitch" aria-pressed="false">글리치</button>
         </div>

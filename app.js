@@ -193,7 +193,7 @@ function lyricAt(t) {
     if (at >= l.start && at < l.end) {
       const dur = l.end - l.start;
       const fade = Math.min(FADE, dur / 3);
-      const alpha = Math.min(1, (at - l.start) / fade, (l.end - at) / fade);
+      const alpha = state.fx === 'none' ? 1 : Math.min(1, (at - l.start) / fade, (l.end - at) / fade);
       const nx = lyr.lines.slice(i + 1).find((x) => x.text);
       const pv = lyr.lines.slice(0, i).reverse().find((x) => x.text);
       return { text: l.text, alpha: Math.max(0, alpha), since: at - l.start, at, next: nx ? nx.text : '', prev: pv ? pv.text : '', ...noteOf(l.text) };
@@ -795,7 +795,10 @@ async function findLyrics() {
     if (!list.length) list = await search({ track_name: title });
     const D = state.audio ? state.audio.buf.duration : null;
     const near = (x) => (D ? Math.abs((x.duration || 0) - D) : 0);
-    const synced = list.filter((x) => x.syncedLyrics).sort((x, y) => near(x) - near(y));
+    // 같은 노래가 여러 판이면 한글이 든 판을 먼저(한국어 노래인데 영어·로마자 판이 먼저 오는 일이 있어서)
+    const ko = (x) => (/[가-힣]/.test(x.syncedLyrics || x.plainLyrics || '') ? 1 : 0);
+    const wantKo = list.some(ko);
+    const synced = list.filter((x) => x.syncedLyrics).sort((x, y) => (wantKo ? ko(y) - ko(x) : 0) || near(x) - near(y));
     const mine = myLines();
     const warnLen = synced.length && D && near(synced[0]) > 3 ? ' — 노래 파일과 길이가 달라 박자가 어긋날 수 있습니다' : '';
     if (synced.length && mine.texts.length) {
@@ -2250,7 +2253,10 @@ function tick(now) {
   markNowLine();
   stageWash(now);
   $('seek').value = Math.min(state.t, T);
-  $('time').textContent = `${fmt(Math.min(state.t, T))} / ${fmt(T)}`;
+  // 노래가 있으면 원곡 시각으로(가사 카드의 시각과 같은 기준)
+  $('time').textContent = state.audio
+    ? `${fmtTenth(state.audio.a + Math.min(state.t, T))} / ${fmt(state.audio.buf.duration)}`
+    : `${fmt(Math.min(state.t, T))} / ${fmt(T)}`;
   requestAnimationFrame(tick);
 }
 
@@ -2353,7 +2359,7 @@ function buildScenes() {
     view.frozen = false;
     const tm = document.createElement('span');
     tm.className = 'sc-time';
-    tm.textContent = fmtTenth(sc.start);
+    tm.textContent = fmtTenth((state.audio ? state.audio.a : 0) + sc.start);
     const l = lyricAt(sceneShowAt(sc));
     const tx = document.createElement('span');
     tx.className = 'sc-text';
@@ -2537,6 +2543,48 @@ function stampSec(prefix) {
   const m = prefix.match(/\[(\d+):(\d+(?:\.\d+)?)\]/);
   return m ? parseInt(m[1], 10) * 60 + parseFloat(m[2]) : null;
 }
+// [번역]·[발음] 줄은 바로 위 가사 줄에 붙이고 가사에서는 뺀다.
+// graft: 위 가사가 시간 없는 줄이고 이미 들어 있는 가사에 같은 줄이 있으면 새로 넣지 않고 기존 줄에 옮겨 붙인다
+const NOTE_RE = /^\s*\[(번역|발음)\]\s*(.*)$/;
+const normLine = (x) => x.toLowerCase().replace(/[\s\p{P}\p{S}]/gu, '');
+function absorbNotes(text, graft) {
+  const existing = new Map();
+  if (graft) for (const r of rawRows()) if (r.text && r.prefix && STAMP_RE.test(r.prefix)) existing.set(normLine(r.text), r.text);
+  const out = [];
+  let last = null;       // { idx(out 위치), text, target(노트를 붙일 글자), drop }
+  let grafted = 0;
+  for (const line of text.split('\n')) {
+    const m = line.match(NOTE_RE);
+    if (m) {
+      if (last && m[2].trim()) {
+        noteSet(last.target, m[1] === '번역' ? 'tr' : 'p', m[2].trim());
+        if (last.drop && !last.counted) { grafted++; last.counted = true; }
+      }
+      continue;
+    }
+    const st = line.match(STAMP_RE);
+    const body = (st ? line.slice(st[0].length) : line).trim();
+    if (!body) { out.push(line); last = null; continue; }
+    const hit = !st && graft ? existing.get(normLine(body)) : null;
+    last = { target: hit || body, drop: !!hit };
+    if (!hit) out.push(line);
+  }
+  // 옮겨 붙인 줄만 있던 자리에 빈 줄이 몰리지 않게 정리
+  const cleaned = out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  return { text: cleaned, grafted };
+}
+// 입력된 그대로 복사. 발음·번역이 있으면 그 줄 아래 [번역]·[발음]으로 같이(다시 붙여넣으면 그대로 돌아온다)
+function lyricsForCopy() {
+  const out = [];
+  for (const r of rawRows()) {
+    out.push(r.raw);
+    const n = r.text && notes[r.text];
+    if (n && n.tr) out.push(`[번역] ${n.tr}`);
+    if (n && n.p) out.push(`[발음] ${n.p}`);
+  }
+  return out.join('\n');
+}
+
 function setLyricsRaw(text) {
   $('lyrics').value = text;
   updateInfo();
@@ -2567,18 +2615,46 @@ function noteSet(text, key, val) {
   saveSettings();
 }
 
+const lfold = new Set();  // 접은 문단(첫 줄 번호)
 function renderNotes() {
   const box = $('lyricCards');
   if (!box) return;
   const rows = rawRows();
   const paras = rawParagraphs(rows);
   for (const i of [...lsel]) if (!rows[i] || !rows[i].text) lsel.delete(i);
+  const q = $('lyricSearch').value.trim().toLowerCase();
   box.innerHTML = '';
   $('selBar').hidden = !paras.length;
+  $('lyricTools').hidden = !paras.length;
+  $('foldAll').textContent = paras.length && paras.every((pa) => lfold.has(pa[0].i)) ? '모두 펴기' : '모두 접기';
+  const match = (r) => {
+    if (!q) return true;
+    const n = notes[r.text] || {};
+    return [r.text, n.p, n.tr].some((x) => x && x.toLowerCase().includes(q));
+  };
+  let shown = 0;
   paras.forEach((para) => {
+    const hits = para.filter(match);
+    if (!hits.length) return;
+    const folded = !q && lfold.has(para[0].i);
     const card = document.createElement('div');
-    card.className = 'lcard';
-    for (const r of para) {
+    card.className = 'lcard' + (folded ? ' folded' : '');
+    // 머리줄: 시각 · 첫 줄 · 줄 수. 누르면 접기
+    const head = document.createElement('button');
+    head.className = 'lhead';
+    head.setAttribute('aria-expanded', String(!folded));
+    const t0 = stampSec(para[0].prefix);
+    head.innerHTML = '<span class="chev">▾</span><span class="lh-time"></span><span class="lh-text"></span><span class="lh-count"></span>';
+    head.querySelector('.lh-time').textContent = t0 == null ? '' : fmt(t0);
+    head.querySelector('.lh-text').textContent = para[0].text;
+    head.querySelector('.lh-count').textContent = `${para.length}줄`;
+    head.addEventListener('click', () => {
+      if (lfold.has(para[0].i)) lfold.delete(para[0].i); else lfold.add(para[0].i);
+      renderNotes();
+    });
+    card.append(head);
+    if (!folded) for (const r of (q ? hits : para)) {
+      shown++;
       const n = notes[r.text] || {};
       const row = document.createElement('div');
       row.className = 'lrow' + (lsel.has(r.i) ? ' sel' : '') + (lopen === r.i ? ' open' : '');
@@ -2595,7 +2671,13 @@ function renderNotes() {
       tm.textContent = sec == null ? '' : fmt(sec);
       const tx = document.createElement('span');
       tx.className = 'ltext';
-      tx.textContent = r.text;
+      if (q && r.text.toLowerCase().includes(q)) {
+        // 찾은 글자 표시
+        const k = r.text.toLowerCase().indexOf(q);
+        const mk = document.createElement('mark');
+        mk.textContent = r.text.slice(k, k + q.length);
+        tx.append(r.text.slice(0, k), mk, r.text.slice(k + q.length));
+      } else tx.textContent = r.text;
       const badges = document.createElement('span');
       badges.className = 'lbadges';
       for (const [k, label] of [['p', '발음'], ['tr', '번역'], ['gl', '글리치']]) {
@@ -2607,12 +2689,7 @@ function renderNotes() {
       row.append(cb, tm, tx, badges);
       row.addEventListener('click', () => {
         lopen = lopen === r.i ? -1 : r.i;
-        // 그 줄로 미리보기 이동
-        const at = rowClipTime(r);
-        if (at != null && lopen === r.i) {
-          setPlaying(false);
-          state.t = Math.max(0, Math.min(duration() - 0.01, at + 0.45));
-        }
+        if (lopen === r.i) goToRow(r);
         renderNotes();
       });
       card.append(row);
@@ -2620,7 +2697,20 @@ function renderNotes() {
     }
     box.append(card);
   });
+  if (q && !shown && !box.children.length) {
+    const e = document.createElement('div');
+    e.className = 'msg';
+    e.textContent = `"${$('lyricSearch').value.trim()}"이(가) 든 줄이 없습니다`;
+    box.append(e);
+  }
   syncSelBar();
+}
+// 그 줄이 보이는 시각으로 미리보기 이동
+function goToRow(r) {
+  const at = rowClipTime(r);
+  if (at == null) return;
+  setPlaying(false);
+  state.t = Math.max(0, Math.min(duration() - 0.01, at + 0.45));
 }
 
 // 펼친 줄의 편집: 가사 글자, 발음, 번역, 이 줄에만 글리치
@@ -2646,6 +2736,42 @@ function lineEditor(r) {
     rows[r.i] = (r.prefix ? r.prefix + ' ' : '') + v;
     setLyricsRaw(rows.join('\n'));
   });
+  // 시간: 원곡 기준. 직접 고치거나 0.1초씩 앞뒤로
+  const setTime = (sec) => {
+    const rows = $('lyrics').value.split('\n');
+    const pre = sec == null ? '' : fmtLrc(Math.max(0, sec)) + ' ';
+    rows[r.i] = pre + r.text;
+    setLyricsRaw(rows.join('\n'));
+    const nr = rawRows()[r.i];
+    if (nr) goToRow(nr);
+    renderNotes();
+  };
+  const cur = stampSec(r.prefix);
+  const trow = document.createElement('div');
+  trow.className = 'row';
+  const back = document.createElement('button');
+  back.className = 'btn sm';
+  back.textContent = '◀ 0.1초';
+  back.setAttribute('aria-label', '0.1초 앞으로');
+  const time = document.createElement('input');
+  time.type = 'text';
+  time.value = cur == null ? '' : fmtLrc(cur).slice(1, -1);
+  time.placeholder = '0:00.00';
+  time.setAttribute('aria-label', '시작 시각');
+  time.className = 'ltime-in';
+  const fwd = document.createElement('button');
+  fwd.className = 'btn sm';
+  fwd.textContent = '0.1초 ▶';
+  fwd.setAttribute('aria-label', '0.1초 뒤로');
+  back.onclick = () => setTime((stampSec(r.prefix) ?? rowClipTime(r) ?? 0) - 0.1);
+  fwd.onclick = () => setTime((stampSec(r.prefix) ?? rowClipTime(r) ?? 0) + 0.1);
+  time.addEventListener('change', () => {
+    const v = time.value.trim();
+    if (!v) { setTime(null); return; }
+    const sec = parseTime(v);
+    if (!isNaN(sec)) setTime(sec);
+  });
+  trow.append(back, time, fwd);
   const n = notes[r.text] || {};
   const pron = mk(n.p, '발음', '발음', (v) => noteSet(r.text, 'p', v));
   const trans = mk(n.tr, '번역', '번역', (v) => noteSet(r.text, 'tr', v));
@@ -2657,7 +2783,7 @@ function lineEditor(r) {
   cb.checked = !!n.gl;
   cb.addEventListener('change', () => { noteSet(r.text, 'gl', cb.checked); renderNotes(); });
   gl.append(cb, '이 줄에만 글리치');
-  ed.append(text, pron, trans, gl);
+  ed.append(trow, text, pron, trans, gl);
   return ed;
 }
 
@@ -2666,7 +2792,7 @@ function syncSelBar() {
   const n = lsel.size;
   $('selAll').checked = n > 0 && n === rows.length;
   $('selAll').indeterminate = n > 0 && n < rows.length;
-  $('selCount').textContent = n ? `${n}줄 고름` : '';
+  $('selCount').textContent = n ? `${n}줄` : '';
   for (const id of ['selKeep', 'selDel', 'selGlitch']) $(id).disabled = !n;
   const texts = rows.filter((r) => lsel.has(r.i)).map((r) => r.text);
   const allOn = texts.length && texts.every((t) => notes[t] && notes[t].gl);
@@ -2690,11 +2816,14 @@ function editSelected(keep) {
 // 붙여넣기 칸: 붙여넣거나 Ctrl+Enter, 또는 칸을 벗어나면 카드로 넣는다
 function commitLyricInput() {
   const inp = $('lyricInput');
-  const text = inp.value.trim();
-  if (!text) return;
-  const cur = $('lyrics').value.replace(/\s+$/, '');
+  const raw = inp.value.trim();
+  if (!raw) return;
   inp.value = '';
-  setLyricsRaw(cur ? cur + '\n\n' + text : text);
+  const { text, grafted } = absorbNotes(raw, true);
+  const cur = $('lyrics').value.replace(/\s+$/, '');
+  if (text) setLyricsRaw(cur ? cur + '\n\n' + text : text);
+  else renderNotes();
+  if (grafted) $('lyricMsg').textContent = `${grafted}줄에 번역·발음을 붙였습니다`;
 }
 
 const saveLabels = {};
@@ -3382,6 +3511,27 @@ $('selAll').addEventListener('change', () => {
   renderNotes();
 });
 $('selKeep').addEventListener('click', () => editSelected(true));
+$('lyricSearch').addEventListener('input', renderNotes);
+$('foldAll').addEventListener('click', () => {
+  const paras = rawParagraphs(rawRows());
+  const all = paras.every((pa) => lfold.has(pa[0].i));
+  lfold.clear();
+  if (!all) for (const pa of paras) lfold.add(pa[0].i);
+  renderNotes();
+});
+$('copyLyrics').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(lyricsForCopy());
+    $('lyricMsg').textContent = '가사를 복사했습니다';
+  } catch (e) {
+    $('lyricMsg').textContent = '복사하지 못했습니다. 텍스트로 편집에서 직접 복사해 주세요';
+  }
+});
+// 텍스트로 편집에서 [번역]·[발음] 줄을 쓰면 위 줄에 붙이고 가사에서는 뺀다
+$('lyrics').addEventListener('change', () => {
+  if (!/\[(번역|발음)\]/.test($('lyrics').value)) return;
+  setLyricsRaw(absorbNotes($('lyrics').value, false).text);
+});
 $('selDel').addEventListener('click', () => editSelected(false));
 $('selGlitch').addEventListener('click', () => {
   const texts = rawRows().filter((r) => r.text && lsel.has(r.i)).map((r) => r.text);
