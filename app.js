@@ -37,11 +37,11 @@ const state = {
 let still = null;
 
 // ---------- 설정 저장 (텍스트만) ----------
-const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font', 'glowAmt'];
+const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font', 'glowAmt', 'chName', 'subs', 'likes', 'vTitle'];
 function settingsObj() {
   const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glow: state.glow, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans, imgMode: state.imgMode,
       bokeh: $('bokeh').checked, gMain: $('gMain').checked, gPron: $('gPron').checked, gTrans: $('gTrans').checked,
-      align: state.align, nextLine: $('nextLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked };
+      align: state.align, nextLine: $('nextLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked, ytDark: $('ytDark').checked };
   for (const f of FIELDS) o[f] = $(f).value;
   return o;
 }
@@ -64,7 +64,7 @@ function loadSettings() {
     if (o.imgGlitch != null) $('imgGlitch').checked = o.imgGlitch;
     if (o.imgTrans) setSeg('imgTrans', o.imgTrans);
     if (o.imgMode) setSeg('imgMode', o.imgMode);
-    for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'beatSync', 'spin']) if (o[id] != null) $(id).checked = o[id];
+    for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'beatSync', 'spin', 'ytDark']) if (o[id] != null) $(id).checked = o[id];
     // 예전 저장값(모양마다 정렬 하나)은 두 묶음에 같이 넣는다
     if (o.align) for (const m of ['player', 'cd']) {
       const v = o.align[m];
@@ -1114,40 +1114,45 @@ function drawBokeh(g, x, y, w, h, t) {
 
 // 아트(또는 디스크) 뒤에서 번져 나오는 빛. 노래가 있으면 소리 크기를 따라 숨 쉰다
 // 화려하게: 그림 가장자리 줄을 바깥으로 길게 늘여 색을 넓게 퍼뜨린 뒤 크게 흐리고 채도·밝기를 올린다
-function vividGlowImage(it, size, u) {
-  const key = 'vglow' + size + gmKey() + [it.fx, it.fy, it.zoom].join();
+// spreadK: 바깥으로 퍼지는 폭(짧은 변 대비)
+function vividGlowImage(it, w, h = w, spreadK = 0.8) {
+  const key = 'vglow' + w + 'x' + h + 'k' + spreadK + gmKey() + [it.fx, it.fy, it.zoom].join();
   if (it.cache[key]) return it.cache[key];
   const art = document.createElement('canvas');
-  art.width = art.height = size;
-  drawCover(art.getContext('2d'), srcOf(it), 0, 0, size, size, it);
-  const pad = Math.round(size * 0.8);
-  const S = size + pad * 2;
+  art.width = w; art.height = h;
+  drawCover(art.getContext('2d'), srcOf(it), 0, 0, w, h, it);
+  const pad = Math.round(Math.min(w, h) * spreadK);
+  const SW = w + pad * 2, SH = h + pad * 2;
   const ext = document.createElement('canvas');
-  ext.width = ext.height = S;
+  ext.width = SW; ext.height = SH;
   const e = ext.getContext('2d');
-  const k = Math.max(2, Math.round(size * 0.04)); // 가장자리 줄 두께
+  const k = Math.max(2, Math.round(Math.min(w, h) * 0.04)); // 가장자리 줄 두께
   e.drawImage(art, pad, pad);
-  e.drawImage(art, 0, 0, size, k, pad, 0, size, pad);                       // 위
-  e.drawImage(art, 0, size - k, size, k, pad, pad + size, size, pad);       // 아래
-  e.drawImage(art, 0, 0, k, size, 0, pad, pad, size);                       // 왼쪽
-  e.drawImage(art, size - k, 0, k, size, pad + size, pad, pad, size);       // 오른쪽
-  e.drawImage(art, 0, 0, k, k, 0, 0, pad, pad);                             // 모서리
-  e.drawImage(art, size - k, 0, k, k, pad + size, 0, pad, pad);
-  e.drawImage(art, 0, size - k, k, k, 0, pad + size, pad, pad);
-  e.drawImage(art, size - k, size - k, k, k, pad + size, pad + size, pad, pad);
+  e.drawImage(art, 0, 0, w, k, pad, 0, w, pad);                    // 위
+  e.drawImage(art, 0, h - k, w, k, pad, pad + h, w, pad);          // 아래
+  e.drawImage(art, 0, 0, k, h, 0, pad, pad, h);                    // 왼쪽
+  e.drawImage(art, w - k, 0, k, h, pad + w, pad, pad, h);          // 오른쪽
+  e.drawImage(art, 0, 0, k, k, 0, 0, pad, pad);                    // 모서리
+  e.drawImage(art, w - k, 0, k, k, pad + w, 0, pad, pad);
+  e.drawImage(art, 0, h - k, k, k, 0, pad + h, pad, pad);
+  e.drawImage(art, w - k, h - k, k, k, pad + w, pad + h, pad, pad);
   const c = document.createElement('canvas');
-  c.width = c.height = S;
+  c.width = SW; c.height = SH;
   const g = c.getContext('2d');
-  g.filter = `blur(${size * 0.16}px) saturate(2.6) brightness(1.35)`;
+  g.filter = `blur(${Math.min(w, h) * 0.16}px) saturate(2.6) brightness(1.35)`;
   g.drawImage(ext, 0, 0);
-  // 바깥으로 갈수록 흐려지게 둥글게 깎는다
+  // 바깥으로 갈수록 흐려지게 깎는다
   g.filter = 'none';
   g.globalCompositeOperation = 'destination-in';
-  const fade = g.createRadialGradient(S / 2, S / 2, size * 0.45, S / 2, S / 2, S / 2);
+  g.save();
+  g.translate(SW / 2, SH / 2);
+  g.scale(SW / SH, 1);
+  const fade = g.createRadialGradient(0, 0, SH * 0.25, 0, 0, SH / 2);
   fade.addColorStop(0, 'rgba(0,0,0,1)');
   fade.addColorStop(1, 'rgba(0,0,0,0)');
   g.fillStyle = fade;
-  g.fillRect(0, 0, S, S);
+  g.fillRect(-SH / 2, -SH / 2, SH, SH);
+  g.restore();
   it.cache[key] = c;
   return c;
 }
@@ -1163,7 +1168,7 @@ function drawGlow(g, cx, cy, size, round, u, t) {
   if (state.glow === 'vivid') {
     // 넓게 퍼지는 빛 + 아트 바로 옆의 밝은 빛 두 겹. 소리에 맞춰 더 크게 숨 쉰다
     const wide = (it, w) => {
-      const c = vividGlowImage(it, Math.round(size), u);
+      const c = vividGlowImage(it, Math.round(size));
       const sc = c.width * (1 + 0.1 * lv) * spread;
       g.globalAlpha = Math.min(1, (0.7 + 0.3 * lv) * amt) * w;
       g.drawImage(c, cx - sc / 2, cy - sc / 2, sc, sc);
@@ -1290,6 +1295,22 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
     next = fitText(g, items[0].next, maxW);
   }
   let y = opt.top ? y0 : y0 + Math.max(0, (y1 - y0 - layout.h) / 2);
+  if (opt.box) {
+    // 영상 자막처럼 글자 뒤에 반투명 검은 상자
+    let mw = 0;
+    for (const L of layout) {
+      g.font = `500 ${S.pron}px ${FONT}`; if (L.pron) mw = Math.max(mw, g.measureText(L.pron).width);
+      g.font = `600 ${S.main}px ${FONT}`; for (const x of L.main) mw = Math.max(mw, g.measureText(x).width);
+      g.font = `500 ${S.trans}px ${FONT}`; for (const x of L.trans) mw = Math.max(mw, g.measureText(x).width);
+    }
+    const px = 7 * u * k, py = 4 * u * k;
+    g.globalAlpha = still ? 1 : layout[0].it.alpha;
+    g.fillStyle = 'rgba(8,8,8,0.72)';
+    g.beginPath();
+    g.roundRect(cx - mw / 2 - px, y - py, mw + px * 2, layout.h + py * 2 - S.main * 0.2, 3 * u);
+    g.fill();
+    g.globalAlpha = 1;
+  }
   for (const L of layout) {
     const alpha = still ? 1 : L.it.alpha;
     const gs = glitch ? glitchOf(L.it, t) : 0;
@@ -1479,7 +1500,7 @@ function drawTitleBlock(g, b, m, u, fg, dim, onArt) {
 }
 
 function render(g, W, t) {
-  const H = Math.round(W * 4 / 3);
+  const H = heightOf(W);
   const u = W / 480;
   const T = duration();
   const light = state.bgMode === 'solid' && isLight($('bgColor').value);
@@ -1488,6 +1509,12 @@ function render(g, W, t) {
 
   g.save();
   g.clearRect(0, 0, W, H);
+  if (state.mode === 'yt') {
+    drawVideoPage(g, W, H, u, t, T);
+    drawStickers(g, W, t);
+    g.restore();
+    return;
+  }
   drawBackground(g, W, H, t);
 
   if (still && still.items.length > 1) {
@@ -1573,6 +1600,249 @@ function render(g, W, t) {
   g.restore();
 }
 
+// ---------- 동영상 페이지 ----------
+// 영상(16:9) + 아래쪽 재생바·조작 아이콘, 영상 제목, 채널 줄(프로필·채널 이름·구독자·구독, 좋아요·공유·저장)
+// 상표(로고·이름)는 넣지 않고 배치와 버튼 모양만 따른다
+const VID = { x: 12, y: 10, w: 456, h: 256.5 };
+// 24칸 기준 아이콘. 직접 그린 단순한 모양
+const ICONS = {
+  play: { fill: 'M8 5v14l11-7z' },
+  pause: { fill: 'M7 5h3.5v14H7zM13.5 5H17v14h-3.5z' },
+  next: { fill: 'M6 6l8.5 6L6 18zM16 6h2.5v12H16z' },
+  volume: { fill: 'M4 9h4l5-4v14l-5-4H4z', stroke: 'M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11' },
+  cc: { stroke: 'M3.5 6.5h17v11h-17z' },
+  gear: { stroke: 'M12 8.6a3.4 3.4 0 1 0 0 6.8 3.4 3.4 0 0 0 0-6.8zM12 3.5v2.3M12 18.2v2.3M3.5 12h2.3M18.2 12h2.3M6 6l1.6 1.6M16.4 16.4L18 18M6 18l1.6-1.6M16.4 7.6L18 6' },
+  full: { stroke: 'M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5' },
+  like: { stroke: 'M7.5 10.5V20H4.5V10.5zM7.5 10.5l3.6-6.2c.8-.9 2.4-.4 2.4 1v4.2h5a1.8 1.8 0 0 1 1.8 2.1l-1.3 6.9a1.8 1.8 0 0 1-1.8 1.5H7.5' },
+  share: { stroke: 'M14 5l7 7-7 7M21 12H11a7 7 0 0 0-7 7' },
+  save: { stroke: 'M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14' },
+  more: { fill: 'M12 5.5a1.6 1.6 0 1 0 0 3.2 1.6 1.6 0 0 0 0-3.2zM12 10.4a1.6 1.6 0 1 0 0 3.2 1.6 1.6 0 0 0 0-3.2zM12 15.3a1.6 1.6 0 1 0 0 3.2 1.6 1.6 0 0 0 0-3.2z' },
+};
+const iconPaths = {};
+function icon(g, name, cx, cy, size, color, flip = false) {
+  const d = ICONS[name];
+  if (!iconPaths[name]) iconPaths[name] = { f: d.fill && new Path2D(d.fill), s: d.stroke && new Path2D(d.stroke) };
+  const P = iconPaths[name];
+  g.save();
+  g.translate(cx, cy);
+  if (flip) g.rotate(Math.PI);
+  g.scale(size / 24, size / 24);
+  g.translate(-12, -12);
+  g.fillStyle = g.strokeStyle = color;
+  g.lineWidth = 1.9;
+  g.lineCap = g.lineJoin = 'round';
+  if (P.f) g.fill(P.f);
+  if (P.s) g.stroke(P.s);
+  g.restore();
+}
+
+function videoRect(u) { return { x: VID.x * u, y: VID.y * u, w: VID.w * u, h: VID.h * u }; }
+
+function drawVideoPage(g, W, H, u, t, T) {
+  const dark = $('ytDark').checked;
+  const page = dark ? '#0f0f0f' : '#ffffff';
+  const fg = dark ? '#f1f1f1' : '#0f0f0f';
+  const dim = dark ? '#aaaaaa' : '#606060';
+  const chip = dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)';
+  g.fillStyle = page;
+  g.fillRect(0, 0, W, H);
+
+  const v = videoRect(u);
+  // 주변 빛: 어두운 화면에서는 영상 뒤로 번지고, 밝은 화면에서는 옅게
+  if (state.glow !== 'off') {
+    const { a, b, p } = imageAt(t);
+    if (a) {
+      const lv = levelAt(t);
+      const amt = (parseFloat($('glowAmt').value) || 100) / 100;
+      // 영상 둘레에만 퍼지게(페이지 배경색은 지킨다)
+      const base = (state.glow === 'vivid' ? 0.85 : 0.5) * (dark ? 1 : 0.3);
+      const sc = (1 + 0.05 * lv) * (1 + Math.max(0, amt - 1) * 0.3);
+      const one = (it, k) => {
+        const c = vividGlowImage(it, Math.round(v.w), Math.round(v.h), state.glow === 'vivid' ? 0.3 : 0.18);
+        const w2 = c.width * sc, h2 = c.height * sc;
+        g.globalAlpha = Math.min(1, base * (0.8 + 0.4 * lv) * amt) * k;
+        g.drawImage(c, v.x + v.w / 2 - w2 / 2, v.y + v.h / 2 - h2 / 2, w2, h2);
+      };
+      g.save();
+      g.globalCompositeOperation = dark ? 'screen' : 'source-over';
+      one(a, 1);
+      if (b && p > 0) one(b, p);
+      g.restore();
+    }
+  }
+
+  // 영상
+  g.save();
+  g.beginPath(); g.roundRect(v.x, v.y, v.w, v.h, 8 * u); g.clip();
+  g.fillStyle = '#000';
+  g.fillRect(v.x, v.y, v.w, v.h);
+  drawArt(g, v.x, v.y, v.w, v.h, t);
+  drawBokeh(g, v.x, v.y, v.w, v.h, t);
+  // 자막
+  drawLyrics(g, v.x + v.w / 2, v.y + v.h * 0.45, v.y + v.h - 34 * u, v.w * 0.82, u, '#ffffff', 'rgba(255,255,255,0.78)', t,
+    { align: 'center', size: 12, box: true });
+  // 아래쪽 조작 막대
+  const grad = g.createLinearGradient(0, v.y + v.h - 46 * u, 0, v.y + v.h);
+  grad.addColorStop(0, 'rgba(0,0,0,0)');
+  grad.addColorStop(1, 'rgba(0,0,0,0.6)');
+  g.fillStyle = grad;
+  g.fillRect(v.x, v.y + v.h - 46 * u, v.w, 46 * u);
+  const now = state.audio ? state.audio.a + t : t;
+  const total = state.audio ? state.audio.buf.duration : T;
+  const pr = total ? Math.min(1, now / total) : 0;
+  const bx = v.x + 8 * u, bw = v.w - 16 * u, by = v.y + v.h - 25 * u;
+  g.fillStyle = 'rgba(255,255,255,0.3)';
+  g.fillRect(bx, by, bw, 2.4 * u);
+  g.fillStyle = '#ff0033';
+  g.fillRect(bx, by, bw * pr, 2.4 * u);
+  g.beginPath(); g.arc(bx + bw * pr, by + 1.2 * u, 4.5 * u, 0, Math.PI * 2); g.fill();
+  const iy = v.y + v.h - 11 * u, isz = 13 * u, white = '#ffffff';
+  icon(g, 'pause', v.x + 18 * u, iy, isz, white);
+  icon(g, 'next', v.x + 40 * u, iy, isz, white);
+  icon(g, 'volume', v.x + 62 * u, iy, isz, white);
+  g.fillStyle = white;
+  g.font = `500 ${8 * u}px ${FONT}`;
+  g.textAlign = 'left';
+  g.textBaseline = 'middle';
+  g.fillText(`${fmt(now)} / ${fmt(total)}`, v.x + 78 * u, iy);
+  icon(g, 'full', v.x + v.w - 18 * u, iy, isz, white);
+  icon(g, 'gear', v.x + v.w - 40 * u, iy, isz, white);
+  icon(g, 'cc', v.x + v.w - 62 * u, iy, isz, white);
+  g.font = `700 ${4.6 * u}px ${FONT}`;
+  g.textAlign = 'center';
+  g.fillText('CC', v.x + v.w - 62 * u, iy + 0.3 * u);
+  g.restore();
+
+  // 영상 제목
+  const artist = $('artist').value.trim(), song = $('title').value.trim();
+  const vt = $('vTitle').value.trim() || [artist, song].filter(Boolean).join(' - ');
+  g.fillStyle = fg;
+  g.textAlign = 'left';
+  g.textBaseline = 'top';
+  g.font = `700 ${12.5 * u}px ${FONT}`;
+  g.fillText(fitText(g, vt, v.w), v.x, v.y + v.h + 10 * u);
+
+  // 채널 줄
+  const ry = v.y + v.h + 44 * u;           // 줄 가운데
+  const ar = 12 * u;
+  const ax = v.x + ar;
+  g.save();
+  g.beginPath(); g.arc(ax, ry, ar, 0, Math.PI * 2); g.clip();
+  const chName = $('chName').value.trim() || artist || '채널';
+  if (avatar) drawCover(g, avatar.img, ax - ar, ry - ar, ar * 2, ar * 2);
+  else {
+    g.fillStyle = '#7b6cd9';
+    g.fillRect(ax - ar, ry - ar, ar * 2, ar * 2);
+    g.fillStyle = '#fff';
+    g.font = `600 ${11 * u}px ${FONT}`;
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText(chName.slice(0, 1).toUpperCase(), ax, ry + 0.5 * u);
+  }
+  g.restore();
+
+  const pill = (x, w, label, iconName, flip) => {
+    const h = 22 * u;
+    g.fillStyle = chip;
+    g.beginPath(); g.roundRect(x, ry - h / 2, w, h, h / 2); g.fill();
+    let tx = x + 10 * u;
+    if (iconName) { icon(g, iconName, tx + 6 * u, ry, 12 * u, fg, flip); tx += 16 * u; }
+    if (label) {
+      g.fillStyle = fg;
+      g.font = `600 ${8 * u}px ${FONT}`;
+      g.textAlign = 'left';
+      g.textBaseline = 'middle';
+      g.fillText(label, tx, ry + 0.3 * u);
+    }
+  };
+  const measure = (label, iconName) => {
+    g.font = `600 ${8 * u}px ${FONT}`;
+    return 20 * u + (iconName ? 16 * u : 0) + (label ? g.measureText(label).width : 0) - (label ? 0 : 4 * u);
+  };
+
+  // 오른쪽부터: ⋯, 오프라인 저장, 공유, 좋아요|싫어요
+  const right = v.x + v.w;
+  const moreW = 22 * u;
+  g.fillStyle = chip;
+  g.beginPath(); g.arc(right - moreW / 2, ry, moreW / 2, 0, Math.PI * 2); g.fill();
+  icon(g, 'more', right - moreW / 2, ry, 13 * u, fg);
+  let rx = right - moreW - 6 * u;
+  const saveW = measure('오프라인 저장', 'save');
+  const shareW = measure('공유', 'share');
+  const likes = $('likes').value.trim();
+  g.font = `600 ${8 * u}px ${FONT}`;
+  const likeW = 26 * u + (likes ? g.measureText(likes).width + 4 * u : 0) + 30 * u;
+
+  // 왼쪽: 채널 이름·구독자·구독 버튼
+  const subs = $('subs').value.trim();
+  const nx = ax + ar + 8 * u;
+  g.fillStyle = fg;
+  g.font = `600 ${9.5 * u}px ${FONT}`;
+  g.textAlign = 'left';
+  g.textBaseline = subs ? 'alphabetic' : 'middle';
+  const nameMax = 120 * u;
+  const nameText = fitText(g, chName, nameMax);
+  g.fillText(nameText, nx, subs ? ry - 1 * u : ry);
+  let leftEnd = nx + g.measureText(nameText).width;
+  if (subs) {
+    g.fillStyle = dim;
+    g.font = `400 ${7.5 * u}px ${FONT}`;
+    g.textBaseline = 'top';
+    const st = fitText(g, subs, nameMax);
+    g.fillText(st, nx, ry + 1.5 * u);
+    leftEnd = Math.max(leftEnd, nx + g.measureText(st).width);
+  }
+  const subX = leftEnd + 12 * u;
+  g.font = `600 ${8.5 * u}px ${FONT}`;
+  const subW = g.measureText('구독').width + 22 * u;
+  g.fillStyle = dark ? '#f1f1f1' : '#0f0f0f';
+  g.beginPath(); g.roundRect(subX, ry - 11 * u, subW, 22 * u, 11 * u); g.fill();
+  g.fillStyle = dark ? '#0f0f0f' : '#ffffff';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText('구독', subX + subW / 2, ry + 0.3 * u);
+  const leftLimit = subX + subW + 10 * u;
+
+  // 자리가 모자라면 오프라인 저장 → 공유 순으로 뺀다
+  const fit = (w) => rx - w >= leftLimit;
+  if (fit(saveW + 6 * u + shareW + 6 * u + likeW)) { rx -= saveW; pill(rx, saveW, '오프라인 저장', 'save'); rx -= 6 * u; }
+  if (fit(shareW + 6 * u + likeW)) { rx -= shareW; pill(rx, shareW, '공유', 'share'); rx -= 6 * u; }
+  if (fit(likeW)) {
+    rx -= likeW;
+    const h = 22 * u;
+    g.fillStyle = chip;
+    g.beginPath(); g.roundRect(rx, ry - h / 2, likeW, h, h / 2); g.fill();
+    icon(g, 'like', rx + 16 * u, ry, 12 * u, fg);
+    let tx = rx + 26 * u;
+    if (likes) {
+      g.fillStyle = fg;
+      g.font = `600 ${8 * u}px ${FONT}`;
+      g.textAlign = 'left';
+      g.textBaseline = 'middle';
+      g.fillText(likes, tx, ry + 0.3 * u);
+      tx += g.measureText(likes).width + 4 * u;
+    }
+    g.fillStyle = dark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)';
+    g.fillRect(tx + 4 * u, ry - 7 * u, 1 * u, 14 * u);
+    icon(g, 'like', tx + 16 * u, ry, 12 * u, fg, true);
+  }
+}
+
+// 채널 프로필 사진
+let avatar = null;
+function setAvatar(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const url = URL.createObjectURL(file);
+  const img = new Image();
+  img.onload = () => {
+    if (avatar) URL.revokeObjectURL(avatar.url);
+    avatar = { url, img };
+    $('avatarDrop').style.backgroundImage = `url("${url}")`;
+    $('avatarDrop').classList.add('has');
+  };
+  img.src = url;
+}
+
 // ---------- 스티커 ----------
 const STICKER_FX = [['none', '효과 없음'], ['blink', '깜빡'], ['twitch', '움찔'], ['boing', '뽀용'], ['wobble', '까딱'], ['glitch', '글리치']];
 
@@ -1611,7 +1881,7 @@ async function addStickers(files) {
 // 스티커가 (회전한 모양 그대로) 카드 안쪽 영역에 다 들어가도록 가운데 자리를 막는다.
 // 영역보다 크면 그 방향으로는 가운데에 둔다
 function clampSticker(st) {
-  const W = 480, H = 640, m = EDGE;
+  const W = 480, H = heightOf(480), m = EDGE;
   const { w, h } = stickerSize(st, W);
   const a = (st.rot * Math.PI) / 180;
   const hw = Math.abs((w / 2) * Math.cos(a)) + Math.abs((h / 2) * Math.sin(a));
@@ -1665,7 +1935,7 @@ function stickerPose(st, t, u) {
   return p;
 }
 function drawStickers(g, W, t) {
-  const u = W / 480, H = Math.round(W * 4 / 3);
+  const u = W / 480, H = heightOf(W);
   for (const st of state.stickers) {
     const { w, h } = stickerSize(st, W);
     const p = stickerPose(st, t, u);
@@ -1815,10 +2085,19 @@ function drawDisc(g, cx, cy, R, u, t, T) {
 }
 
 // ---------- 미리보기 ----------
-function exportWidth() { return parseInt($('size').value, 10); }
+// 화면 비율(세로/가로). 동영상 페이지는 가로라서 저장 크기도 1.6배로 잡는다
+function ratio() { return state.mode === 'yt' ? 0.72 : 4 / 3; }
+function heightOf(W) { return Math.round(W * ratio()); }
+function exportWidth() { return Math.round(parseInt($('size').value, 10) * (state.mode === 'yt' ? 1.6 : 1)); }
+function syncSizeLabels() {
+  for (const o of $('size').options) {
+    const w = Math.round(parseInt(o.value, 10) * (state.mode === 'yt' ? 1.6 : 1));
+    o.textContent = `${w} × ${heightOf(w)}`;
+  }
+}
 
 function sizeStage() {
-  const W = exportWidth(), H = Math.round(W * 4 / 3);
+  const W = exportWidth(), H = heightOf(W);
   if (stage.width !== W || stage.height !== H) { stage.width = W; stage.height = H; }
 }
 
@@ -1930,7 +2209,7 @@ function buildScenes() {
     const b = document.createElement('button');
     b.className = 'scene';
     const c = document.createElement('canvas');
-    c.width = TW; c.height = Math.round(TW * 4 / 3);
+    c.width = TW; c.height = heightOf(TW);
     view.frozen = true;
     render(c.getContext('2d'), TW, sceneShowAt(sc));
     view.frozen = false;
@@ -2044,7 +2323,7 @@ async function openPicker() {
     b.className = 'pick';
     b.setAttribute('aria-pressed', 'false');
     const c = document.createElement('canvas');
-    c.width = TW; c.height = Math.round(TW * 4 / 3);
+    c.width = TW; c.height = heightOf(TW);
     renderStill(c.getContext('2d'), TW, pk);
     const mark = document.createElement('span');
     mark.className = 'mark';
@@ -2076,7 +2355,7 @@ async function savePicks() {
   const chosen = picks.filter((p) => p.sel);
   for (const pk of chosen) {
     const c = document.createElement('canvas');
-    c.width = W; c.height = Math.round(W * 4 / 3);
+    c.width = W; c.height = heightOf(W);
     const g = c.getContext('2d');
     if (type === 'image/jpeg') { g.fillStyle = '#000'; g.fillRect(0, 0, c.width, c.height); }
     renderStill(g, W, pk);
@@ -2155,7 +2434,7 @@ const nextTick = () => new Promise((r) => setTimeout(r, 0));
 async function saveGif() {
   if (state.busy) { state.cancel = true; return; }
   const { GIFEncoder, quantize, applyPalette } = window.gifenc;
-  const W = exportWidth(), H = Math.round(W * 4 / 3);
+  const W = exportWidth(), H = heightOf(W);
   const { T, fps, frames } = gifPlan();
   const delay = 1000 / fps;
 
@@ -2216,7 +2495,7 @@ async function saveMp4() {
     $('status').textContent = '이 브라우저는 MP4 저장을 못 합니다. 크롬이나 엣지에서 열어 주세요';
     return;
   }
-  const W = exportWidth(), H = Math.round(W * 4 / 3);
+  const W = exportWidth(), H = heightOf(W);
   const T = duration();
   const frames = Math.max(1, Math.round(T * MP4_FPS));
   const au = state.audio;
@@ -2326,9 +2605,12 @@ function syncImgMode() {
 function syncFx() {
   $('gTargets').hidden = state.fx !== 'glitch';
   $('spinRow').hidden = state.mode !== 'cd';
+  $('ytDarkRow').hidden = state.mode !== 'yt';
+  $('chGroup').hidden = state.mode !== 'yt';
+  syncSizeLabels();
   $('glowAmtRow').hidden = state.glow === 'off';
 }
-for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'beatSync', 'spin']) $(id).addEventListener('change', saveSettings);
+for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'beatSync', 'spin', 'ytDark']) $(id).addEventListener('change', saveSettings);
 
 // 글자 정렬은 묶음마다, 모양(플레이어/CD)마다 따로 기억한다
 const ALIGN_SEGS = { alignTitle: 'title', alignLyric: 'lyric' };
@@ -2376,6 +2658,7 @@ $('font').addEventListener('change', applyFont);
 // ---------- 미리보기 위에서 끌기·휠: 스티커 > 이미지 ----------
 function artRect() {
   const u = stage.width / 480;
+  if (state.mode === 'yt') return videoRect(u);
   if (state.mode === 'player') { const s2 = 352 * u; return { x: (stage.width - s2) / 2, y: 44 * u, w: s2, h: s2 }; }
   const R = 186 * u;
   return { x: stage.width / 2 - R, y: 228 * u - R, w: R * 2, h: R * 2 };
@@ -2550,6 +2833,7 @@ audioDrop.addEventListener('drop', (e) => {
 $('audioRemove').addEventListener('click', removeAudio);
 
 $('findLyrics').addEventListener('click', findLyrics);
+$('avatarFile').addEventListener('change', (e) => { setAvatar(e.target.files[0]); e.target.value = ''; });
 $('refit').addEventListener('click', () => {
   for (const it of state.images) it.lsec = undefined;
   updateInfo();
