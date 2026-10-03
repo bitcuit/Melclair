@@ -916,7 +916,7 @@ document.addEventListener('keydown', (e) => {
   }
   const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement && document.activeElement.tagName)
     && !['checkbox', 'range', 'color'].includes(document.activeElement.type);
-  if (typing || state.busy) return;
+  if (typing || state.busy || $('help').open) return;
   if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); }
   else if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
     if (!scenes.length) return;
@@ -3205,6 +3205,15 @@ $('eyeBtn').addEventListener('click', () => {
   updateInfo();
   $('eyeBtn').setAttribute('aria-pressed', String(fxVisible));
   $('eyeBtn').setAttribute('aria-label', fxVisible ? '효과 숨기기' : '효과 보이기');
+});
+
+// ---------- 사용법 ----------
+$('helpBtn').addEventListener('click', () => $('help').showModal());
+$('helpClose').addEventListener('click', () => $('help').close());
+// 창 바깥(어두운 막)을 누르면 닫는다
+$('help').addEventListener('click', (e) => {
+  const r = $('help').getBoundingClientRect();
+  if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) $('help').close();
 });
 
 // ---------- 화이트 모드 ----------
