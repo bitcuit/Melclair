@@ -2888,11 +2888,12 @@ function syncImgMode() {
 // 가사 효과가 글리치일 때만 넣을 곳을 고르게 한다
 function syncFx() {
   $('gTargets').hidden = state.fx !== 'glitch';
-  $('spinRow').hidden = state.mode !== 'cd';
+  $('cdGroup').hidden = state.mode !== 'cd';
+  // 동영상은 페이지 색만 고르고, 이미지 흐리게·단색 배경은 쓰지 않는다
+  $('bgRow').hidden = state.mode === 'yt';
   $('ytDarkRow').hidden = state.mode !== 'yt';
   // 동영상은 제목·가수 정렬을 쓰지 않는다
   $('alignTitleRow').hidden = state.mode === 'yt';
-  $('discAngleRow').hidden = state.mode !== 'cd';
   $('glowSpreadRow').hidden = state.glow === 'off';
   if ($('lyStyle')) syncLyStyle();
   $('chGroup').hidden = state.mode !== 'yt';

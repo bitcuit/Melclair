@@ -399,9 +399,6 @@
     <button data-v="cd" aria-pressed="false">CD 플레이어</button>
     <button data-v="yt" aria-pressed="false">동영상</button>
   </div>
-  <label class="check" id="spinRow" hidden><input type="checkbox" id="spin" checked>CD 돌리기</label>
-  <label class="row" id="discAngleRow" hidden><span class="lbl">디스크 각도</span><input type="range" id="discAngle" min="0" max="359" step="1" value="0" style="width:110px;accent-color:var(--text)"><span class="unit" id="discAngleVal" style="width:32px">0°</span></label>
-  <label class="check" id="ytDarkRow" hidden><input type="checkbox" id="ytDark" checked>어두운 화면</label>
   <span class="grow"></span>
   <span class="status" id="status"></span>
   <button class="theme-btn" id="themeBtn" aria-label="화이트 모드">
@@ -631,6 +628,11 @@
   <!-- 효과 -->
   <div class="pane" data-pane="fx" hidden>
     <h2>효과</h2>
+    <div class="group" id="cdGroup" hidden>
+      <span class="gl">CD</span>
+      <label class="check" id="spinRow"><input type="checkbox" id="spin" checked>CD 돌리기</label>
+      <div class="row" id="discAngleRow"><span class="lbl">디스크 각도</span><input type="range" id="discAngle" min="0" max="359" step="1" value="0" style="flex:1"><span class="unit" id="discAngleVal" style="width:32px;text-align:right">0°</span></div>
+    </div>
     <div class="group">
       <span class="gl">이미지</span>
       <div class="row">
@@ -666,7 +668,8 @@
     </div>
     <div class="group">
       <span class="gl">배경</span>
-      <div class="row">
+      <label class="check" id="ytDarkRow" hidden><input type="checkbox" id="ytDark" checked>어두운 화면</label>
+      <div class="row" id="bgRow">
         <div class="seg full" id="bgMode">
           <button data-v="blur" aria-pressed="true">이미지 흐리게</button>
           <button data-v="solid" aria-pressed="false">단색</button>
