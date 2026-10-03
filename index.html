@@ -146,6 +146,40 @@
   }
   .avatar-drop.has { border: 0; color: transparent; }
 
+  /* 가사 카드 */
+  textarea.paste { min-height: 0; resize: vertical; }
+  textarea[hidden] { display: none; }
+  .btn.ghost { border-color: transparent; background: none; color: var(--dim); font-weight: 500; padding: 7px 6px; }
+  .btn.ghost:hover { color: var(--text); background: var(--soft); }
+  .btn.sm { padding: 4px 8px; font-size: 12px; }
+  .sel-bar {
+    position: sticky; top: 0; z-index: 2; display: flex; align-items: center; gap: 6px;
+    background: var(--panel); padding: 6px 0; margin: -10px 0; border-bottom: 1px solid var(--line);
+  }
+  .sel-bar[hidden] { display: none; }
+  .sel-bar input, .lrow input[type=checkbox] { accent-color: var(--text); width: 15px; height: 15px; margin: 0 2px; flex: none; }
+  #selCount { font-size: 12px; color: var(--dim); }
+  .lcards { display: flex; flex-direction: column; gap: 10px; }
+  .lcards[hidden] { display: none; }
+  .lcard { border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+  .lrow {
+    display: grid; grid-template-columns: auto 36px 1fr auto; gap: 8px; align-items: center;
+    padding: 7px 10px; cursor: pointer; border-top: 1px solid var(--line);
+  }
+  .lrow:first-child { border-top: 0; }
+  .lrow:hover { background: var(--soft); }
+  .lrow.sel { background: color-mix(in srgb, var(--sel) 8%, transparent); }
+  .lrow.now .ltext { font-weight: 700; }
+  .lrow.now .ltime { color: var(--sel); }
+  .ltime { font-size: 11px; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .ltext { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lrow.open .ltext { white-space: normal; }
+  .lbadges { display: flex; gap: 3px; }
+  .lbadges i { font-style: normal; font-size: 10px; color: var(--dim); background: var(--soft); border-radius: 4px; padding: 1px 4px; }
+  .ledit { display: flex; flex-direction: column; gap: 6px; padding: 4px 10px 12px 37px; background: var(--soft); }
+  .ledit input[type=text] { padding: 5px 8px; font-size: 12px; background: var(--panel); }
+  .ledit .check { font-size: 12px; color: var(--dim); }
+
   /* 줄마다 설정 */
   details.notes summary { cursor: pointer; font-size: 12px; font-weight: 600; color: var(--dim); }
   details.notes[open] summary { margin-bottom: 10px; }
@@ -410,14 +444,25 @@
   <div class="pane" data-pane="lyric" hidden>
     <h2>가사</h2>
     <div class="group">
-      <textarea id="lyrics" placeholder="한 줄에 한 소절"></textarea>
       <div class="row">
         <button class="btn" id="findLyrics">가사 찾기</button>
         <button class="btn" id="tap" disabled>박자 찍기</button>
+        <span class="grow"></span>
+        <button class="btn ghost" id="rawToggle">텍스트로 편집</button>
       </div>
       <div class="msg" id="lyricMsg"></div>
+      <textarea id="lyricInput" class="paste" rows="2" placeholder="가사 붙여넣기 · 한 줄에 한 소절"></textarea>
+      <textarea id="lyrics" placeholder="한 줄에 한 소절" hidden></textarea>
     </div>
-    <details class="notes" id="notesBox"><summary>줄마다 발음 · 번역 · 글리치</summary><div class="note-list" id="noteList"></div></details>
+    <div class="sel-bar" id="selBar" hidden>
+      <input type="checkbox" id="selAll" aria-label="모두 고르기">
+      <span id="selCount"></span>
+      <span class="grow"></span>
+      <button class="btn sm" id="selKeep" disabled>남기기</button>
+      <button class="btn sm" id="selDel" disabled>지우기</button>
+      <button class="btn sm" id="selGlitch" disabled>글리치 켜기</button>
+    </div>
+    <div class="lcards" id="lyricCards"></div>
     <div class="group">
       <span class="gl">시간</span>
       <div class="row"><span class="lbl">박자 없는 줄 길이</span><input type="number" id="lineSec" min="0.5" step="0.5" value="3"><span class="unit">초</span></div>

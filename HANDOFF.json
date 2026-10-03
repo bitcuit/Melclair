@@ -1,10 +1,10 @@
 {
-  "at": "2026-10-03 13:40",
+  "at": "2026-10-03 14:30",
   "by": "claude-code",
-  "doing": "세 번째 모양으로 동영상 페이지(영상·자막·재생바·채널 줄) 추가",
+  "doing": "가사를 문단 카드로 바꿈(고르기·남기기·지우기·줄마다 편집)",
   "where": "app.js render() / drawLyrics() / drawArt() / saveMp4() / openPicker()",
   "state": "돌아감",
-  "next": "가사를 문단 카드로 바꾸기(고르기·지우기·줄마다 효과)",
+  "next": "실제로 가사 카드와 동영상 모양을 써 보고 어색한 곳 다듬기",
   "blocked": "",
   "session": { "id": "8976c071-774d-442f-9659-8d1393cee662", "title": "", "tool": "claude-code" }
 }

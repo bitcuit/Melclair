@@ -2145,6 +2145,7 @@ function tick(now) {
   drawGuides();
   drawWave();
   sceneTick();
+  markNowLine();
   $('seek').value = Math.min(state.t, T);
   $('time').textContent = `${fmt(Math.min(state.t, T))} / ${fmt(T)}`;
   requestAnimationFrame(tick);
@@ -2155,6 +2156,21 @@ function setPlaying(v) {
   $('play').textContent = v ? '❚❚' : '▶';
   $('play').setAttribute('aria-label', v ? '일시정지' : '재생');
   if (v) restartAudio(); else stopAudio();
+}
+
+// 가사 카드에서 지금 나오는 줄을 표시
+let nowKey = null;
+function markNowLine() {
+  const l = lyricAt(state.t);
+  const key = l && l.text ? l.text : '';
+  if (key === nowKey) return;
+  nowKey = key;
+  let done = false;
+  for (const row of document.querySelectorAll('.lrow')) {
+    const on = !done && key && row.dataset.text === key;
+    row.classList.toggle('now', !!on);
+    if (on) done = true;
+  }
 }
 
 // ---------- 장면 카드: 이미지나 가사 줄이 바뀌는 순간마다 한 장 ----------
@@ -2367,50 +2383,196 @@ async function savePicks() {
   $('status').textContent = `이미지 ${chosen.length}장 저장됨`;
 }
 
-// ---------- 발음 · 번역 ----------
+// ---------- 가사 카드 ----------
+// 글자 칸(#lyrics)이 원본이다. 카드는 그걸 문단·줄로 나눠 보여 주고, 고치면 원본에 다시 쓴다
+const STAMP_RE = /^(\s*\[\d+:\d+(?:\.\d+)?\])+/;
+const DUR_RE = /^\s*\[\d+(?:\.\d+)?\]/;
+const lsel = new Set();   // 고른 줄(원본 줄 번호)
+let lopen = -1;           // 펼친 줄
+function rawRows() {
+  return $('lyrics').value.split('\n').map((raw, i) => {
+    let prefix = '', rest = raw;
+    const m = raw.match(STAMP_RE);
+    if (m) { prefix = m[0]; rest = raw.slice(prefix.length); } else {
+      const d = raw.match(DUR_RE);
+      if (d) { prefix = d[0]; rest = raw.slice(prefix.length); }
+    }
+    return { i, raw, prefix: prefix.trim(), text: rest.trim() };
+  });
+}
+// 빈 줄(또는 글자 없는 시간표 줄)에서 문단을 나눈다
+function rawParagraphs(rows) {
+  const paras = [];
+  let cur = null;
+  for (const r of rows) {
+    if (!r.text) { cur = null; continue; }
+    if (!cur) { cur = []; paras.push(cur); }
+    cur.push(r);
+  }
+  return paras;
+}
+function stampSec(prefix) {
+  const m = prefix.match(/\[(\d+):(\d+(?:\.\d+)?)\]/);
+  return m ? parseInt(m[1], 10) * 60 + parseFloat(m[2]) : null;
+}
+function setLyricsRaw(text) {
+  $('lyrics').value = text;
+  updateInfo();
+  saveSettings();
+  renderNotes();
+}
+// 그 줄이 나오는 미리보기 시각
+function rowClipTime(r) {
+  const lyr = parseLyrics();
+  const shift = parseFloat($('shift').value) || 0;
+  let start;
+  if (lyr.timed) {
+    const s0 = stampSec(r.prefix);
+    if (s0 == null) return null;
+    start = s0 - songBase(lyr) + shift;
+  } else {
+    const k = rawRows().filter((x) => x.text && x.i < r.i).length;
+    const l = lyr.lines[k];
+    if (!l) return null;
+    start = l.start + shift;
+  }
+  return start;
+}
+function noteSet(text, key, val) {
+  notes[text] = { ...(notes[text] || {}), [key]: val };
+  const n = notes[text];
+  if (!n.p && !n.tr && !n.gl) delete notes[text];
+  saveSettings();
+}
+
 function renderNotes() {
-  if (!$('notesBox').open) return;
-  const list = $('noteList');
-  const seen = new Set();
-  const texts = parseLyrics().lines.map((l) => l.text).filter((t) => t && !seen.has(t) && seen.add(t));
-  list.innerHTML = '';
-  if (!texts.length) {
-    list.innerHTML = '<span class="hint">가사를 먼저 넣어 주세요</span>';
-    return;
-  }
-  for (const text of texts) {
-    const row = document.createElement('div');
-    row.className = 'note-row';
-    const src = document.createElement('span');
-    src.className = 'src';
-    src.textContent = text;
-    const mk = (key, ph) => {
-      const inp = document.createElement('input');
-      inp.type = 'text';
-      inp.placeholder = ph;
-      inp.setAttribute('aria-label', `${text} ${ph}`);
-      inp.value = (notes[text] && notes[text][key]) || '';
-      inp.addEventListener('input', () => {
-        notes[text] = { ...(notes[text] || {}), [key]: inp.value };
-        if (!notes[text].p && !notes[text].tr && !notes[text].gl) delete notes[text];
-        saveSettings();
+  const box = $('lyricCards');
+  if (!box) return;
+  const rows = rawRows();
+  const paras = rawParagraphs(rows);
+  for (const i of [...lsel]) if (!rows[i] || !rows[i].text) lsel.delete(i);
+  box.innerHTML = '';
+  $('selBar').hidden = !paras.length;
+  paras.forEach((para) => {
+    const card = document.createElement('div');
+    card.className = 'lcard';
+    for (const r of para) {
+      const n = notes[r.text] || {};
+      const row = document.createElement('div');
+      row.className = 'lrow' + (lsel.has(r.i) ? ' sel' : '') + (lopen === r.i ? ' open' : '');
+      row.dataset.text = r.text;
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = lsel.has(r.i);
+      cb.setAttribute('aria-label', '줄 고르기');
+      cb.addEventListener('click', (e) => e.stopPropagation());
+      cb.addEventListener('change', () => { if (cb.checked) lsel.add(r.i); else lsel.delete(r.i); row.classList.toggle('sel', cb.checked); syncSelBar(); });
+      const tm = document.createElement('span');
+      tm.className = 'ltime';
+      const sec = stampSec(r.prefix);
+      tm.textContent = sec == null ? '' : fmt(sec);
+      const tx = document.createElement('span');
+      tx.className = 'ltext';
+      tx.textContent = r.text;
+      const badges = document.createElement('span');
+      badges.className = 'lbadges';
+      for (const [k, label] of [['p', '발음'], ['tr', '번역'], ['gl', '글리치']]) {
+        if (!n[k]) continue;
+        const b = document.createElement('i');
+        b.textContent = label;
+        badges.append(b);
+      }
+      row.append(cb, tm, tx, badges);
+      row.addEventListener('click', () => {
+        lopen = lopen === r.i ? -1 : r.i;
+        // 그 줄로 미리보기 이동
+        const at = rowClipTime(r);
+        if (at != null && lopen === r.i) {
+          setPlaying(false);
+          state.t = Math.max(0, Math.min(duration() - 0.01, at + 0.45));
+        }
+        renderNotes();
       });
-      return inp;
-    };
-    const gl = document.createElement('label');
-    gl.className = 'check';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = !!(notes[text] && notes[text].gl);
-    cb.addEventListener('change', () => {
-      notes[text] = { ...(notes[text] || {}), gl: cb.checked };
-      if (!notes[text].p && !notes[text].tr && !notes[text].gl) delete notes[text];
-      saveSettings();
-    });
-    gl.append(cb, '이 줄에만 글리치');
-    row.append(src, mk('p', '발음'), mk('tr', '번역'), gl);
-    list.append(row);
+      card.append(row);
+      if (lopen === r.i) card.append(lineEditor(r));
+    }
+    box.append(card);
+  });
+  syncSelBar();
+}
+
+// 펼친 줄의 편집: 가사 글자, 발음, 번역, 이 줄에만 글리치
+function lineEditor(r) {
+  const ed = document.createElement('div');
+  ed.className = 'ledit';
+  const mk = (val, ph, label, on) => {
+    const inp = document.createElement('input');
+    inp.type = 'text';
+    inp.value = val || '';
+    if (ph) inp.placeholder = ph;
+    inp.setAttribute('aria-label', label);
+    inp.addEventListener('input', () => on(inp.value));
+    return inp;
+  };
+  const text = mk(r.text, '', '가사', () => {});
+  text.addEventListener('change', () => {
+    const v = text.value.trim();
+    if (!v || v === r.text) return;
+    // 줄 글자가 바뀌면 그 줄의 발음·번역·글리치도 따라간다
+    if (notes[r.text] && !notes[v]) { notes[v] = notes[r.text]; delete notes[r.text]; }
+    const rows = $('lyrics').value.split('\n');
+    rows[r.i] = (r.prefix ? r.prefix + ' ' : '') + v;
+    setLyricsRaw(rows.join('\n'));
+  });
+  const n = notes[r.text] || {};
+  const pron = mk(n.p, '발음', '발음', (v) => noteSet(r.text, 'p', v));
+  const trans = mk(n.tr, '번역', '번역', (v) => noteSet(r.text, 'tr', v));
+  [pron, trans].forEach((x) => x.addEventListener('change', renderNotes));
+  const gl = document.createElement('label');
+  gl.className = 'check';
+  const cb = document.createElement('input');
+  cb.type = 'checkbox';
+  cb.checked = !!n.gl;
+  cb.addEventListener('change', () => { noteSet(r.text, 'gl', cb.checked); renderNotes(); });
+  gl.append(cb, '이 줄에만 글리치');
+  ed.append(text, pron, trans, gl);
+  return ed;
+}
+
+function syncSelBar() {
+  const rows = rawRows().filter((r) => r.text);
+  const n = lsel.size;
+  $('selAll').checked = n > 0 && n === rows.length;
+  $('selAll').indeterminate = n > 0 && n < rows.length;
+  $('selCount').textContent = n ? `${n}줄 고름` : '';
+  for (const id of ['selKeep', 'selDel', 'selGlitch']) $(id).disabled = !n;
+  const texts = rows.filter((r) => lsel.has(r.i)).map((r) => r.text);
+  const allOn = texts.length && texts.every((t) => notes[t] && notes[t].gl);
+  $('selGlitch').textContent = allOn ? '글리치 끄기' : '글리치 켜기';
+}
+// 고른 줄만 남기거나 지운다. 문단 나눔은 남은 줄 사이에서 지킨다
+function editSelected(keep) {
+  const rows = rawRows();
+  const out = [];
+  for (const para of rawParagraphs(rows)) {
+    const left = para.filter((r) => lsel.has(r.i) === keep);
+    if (!left.length) continue;
+    if (out.length) out.push('');
+    for (const r of left) out.push(r.raw);
   }
+  lsel.clear();
+  lopen = -1;
+  setLyricsRaw(out.join('\n'));
+}
+
+// 붙여넣기 칸: 붙여넣거나 Ctrl+Enter, 또는 칸을 벗어나면 카드로 넣는다
+function commitLyricInput() {
+  const inp = $('lyricInput');
+  const text = inp.value.trim();
+  if (!text) return;
+  const cur = $('lyrics').value.replace(/\s+$/, '');
+  inp.value = '';
+  setLyricsRaw(cur ? cur + '\n\n' + text : text);
 }
 
 const saveLabels = {};
@@ -2895,7 +3057,32 @@ $('unit').addEventListener('click', (e) => {
   setSeg('unit', b.dataset.v);
   openPicker();
 });
-$('notesBox').addEventListener('toggle', renderNotes);
+$('lyricInput').addEventListener('paste', () => setTimeout(commitLyricInput, 0));
+$('lyricInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); commitLyricInput(); } });
+$('lyricInput').addEventListener('blur', commitLyricInput);
+$('selAll').addEventListener('change', () => {
+  lsel.clear();
+  if ($('selAll').checked) for (const r of rawRows()) if (r.text) lsel.add(r.i);
+  renderNotes();
+});
+$('selKeep').addEventListener('click', () => editSelected(true));
+$('selDel').addEventListener('click', () => editSelected(false));
+$('selGlitch').addEventListener('click', () => {
+  const texts = rawRows().filter((r) => r.text && lsel.has(r.i)).map((r) => r.text);
+  const allOn = texts.every((t) => notes[t] && notes[t].gl);
+  for (const t of texts) noteSet(t, 'gl', !allOn);
+  renderNotes();
+});
+// 텍스트로 편집 ↔ 카드로 보기
+$('rawToggle').addEventListener('click', () => {
+  const raw = $('lyrics').hidden;
+  $('lyrics').hidden = !raw;
+  $('lyricCards').hidden = raw;
+  $('selBar').hidden = raw || !rawRows().some((r) => r.text);
+  $('lyricInput').hidden = raw;
+  $('rawToggle').textContent = raw ? '카드로 보기' : '텍스트로 편집';
+  if (!raw) renderNotes();
+});
 let notesTimer = 0;
 $('lyrics').addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(renderNotes, 400); });
 
