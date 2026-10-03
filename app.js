@@ -2,6 +2,7 @@
 
 const BASE_FONT = '"Pretendard", "Malgun Gothic", "Apple SD Gothic Neo", system-ui, sans-serif';
 let FONT = BASE_FONT;
+let LFONT = BASE_FONT;   // 가사 글꼴(따로 안 고르면 FONT와 같음)
 const FADE = 0.35;          // 이미지·가사 전환에 걸리는 초
 const CD_TURN = 4;          // CD 한 바퀴 대략 몇 초 (루프가 끊기지 않게 정수 바퀴로 맞춤)
 const ENV_RATE = 50;        // 소리 크기를 1초에 몇 번 재 두는지
@@ -27,6 +28,9 @@ const state = {
   fx: 'fade',        // 가사 효과
   imgTrans: 'fade',  // 이미지가 바뀔 때
   glow: 'soft',      // 주변 빛: off | soft | vivid
+  lyStyle: { player: 'none', cd: 'none', yt: 'box' },  // 가사 스타일(모양마다): none | box | stroke | glow
+  lyCustom: false,   // 가사 색을 직접 골랐는지(아니면 배경에 맞춘 기본 색)
+  capPos: { dx: 0, dy: 0 },  // 동영상 자막 자리(옮긴 만큼, u 단위)
   imgMode: 'sec',    // 이미지 바꾸는 때: sec(초마다) | lyric(가사 따라)
   // 글자 정렬. 모양마다, 묶음(제목·가사)마다 따로
   align: { player: { title: 'left', lyric: 'left' }, cd: { title: 'center', lyric: 'center' } },
@@ -37,11 +41,12 @@ const state = {
 let still = null;
 
 // ---------- 설정 저장 (텍스트만) ----------
-const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font', 'glowAmt', 'chName', 'subs', 'likes', 'vTitle'];
+const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font', 'glowAmt', 'chName', 'subs', 'likes', 'vTitle', 'glowSpread', 'discAngle', 'lyFont', 'lyColor', 'pronColor', 'transColor', 'fxColor'];
 function settingsObj() {
   const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glow: state.glow, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans, imgMode: state.imgMode,
       bokeh: $('bokeh').checked, gMain: $('gMain').checked, gPron: $('gPron').checked, gTrans: $('gTrans').checked,
-      align: state.align, nextLine: $('nextLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked, ytDark: $('ytDark').checked };
+      align: state.align, nextLine: $('nextLine').checked, prevLine: $('prevLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked, ytDark: $('ytDark').checked,
+      lyStyle: state.lyStyle, lyCustom: state.lyCustom, capPos: state.capPos, gapCalc: $('gapCalc').checked };
   for (const f of FIELDS) o[f] = $(f).value;
   return o;
 }
@@ -63,8 +68,11 @@ function loadSettings() {
     else if (o.glowOn === false) setSeg('glow', 'off');
     if (o.imgGlitch != null) $('imgGlitch').checked = o.imgGlitch;
     if (o.imgTrans) setSeg('imgTrans', o.imgTrans);
+    if (o.lyStyle) Object.assign(state.lyStyle, o.lyStyle);
+    if (o.lyCustom != null) state.lyCustom = o.lyCustom;
+    if (o.capPos) Object.assign(state.capPos, o.capPos);
     if (o.imgMode) setSeg('imgMode', o.imgMode);
-    for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'beatSync', 'spin', 'ytDark']) if (o[id] != null) $(id).checked = o[id];
+    for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'prevLine', 'beatSync', 'spin', 'ytDark', 'gapCalc']) if (o[id] != null) $(id).checked = o[id];
     // 예전 저장값(모양마다 정렬 하나)은 두 묶음에 같이 넣는다
     if (o.align) for (const m of ['player', 'cd']) {
       const v = o.align[m];
@@ -125,7 +133,15 @@ function parseLyrics() {
       for (const start of times) lines.push({ text: s.trim(), start, para });
     }
     lines.sort((x, y) => x.start - y.start);
-    lines.forEach((l, i) => { l.end = i + 1 < lines.length ? lines[i + 1].start : l.start + num('lineSec', 3); });
+    // 반주·빈 구간 계산: 줄 길이를 글자 수로 어림해서, 다음 줄까지 틈이 크면 그 사이는 비운다
+    const gap = $('gapCalc').checked;
+    lines.forEach((l, i) => {
+      const next = i + 1 < lines.length ? lines[i + 1].start : null;
+      if (!gap || !l.text) { l.end = next != null ? next : l.start + num('lineSec', 3); return; }
+      const est = Math.max(2.5, Math.min(8, 1.2 + [...l.text].length * 0.32));
+      if (next == null) l.end = l.start + est;
+      else l.end = next - (l.start + est) > 1.5 ? l.start + est : next;
+    });
     return { timed: true, lines };
   }
   const base = num('lineSec', 3);
@@ -179,7 +195,8 @@ function lyricAt(t) {
       const fade = Math.min(FADE, dur / 3);
       const alpha = Math.min(1, (at - l.start) / fade, (l.end - at) / fade);
       const nx = lyr.lines.slice(i + 1).find((x) => x.text);
-      return { text: l.text, alpha: Math.max(0, alpha), since: at - l.start, at, next: nx ? nx.text : '', ...noteOf(l.text) };
+      const pv = lyr.lines.slice(0, i).reverse().find((x) => x.text);
+      return { text: l.text, alpha: Math.max(0, alpha), since: at - l.start, at, next: nx ? nx.text : '', prev: pv ? pv.text : '', ...noteOf(l.text) };
     }
   }
   return null;
@@ -1139,7 +1156,7 @@ function vividGlowImage(it, w, h = w, spreadK = 0.8) {
   const c = document.createElement('canvas');
   c.width = SW; c.height = SH;
   const g = c.getContext('2d');
-  g.filter = `blur(${Math.min(w, h) * 0.16}px) saturate(2.6) brightness(1.35)`;
+  g.filter = `blur(${Math.min(w, h) * 0.12}px) saturate(3) brightness(1.45)`;
   g.drawImage(ext, 0, 0);
   // 바깥으로 갈수록 흐려지게 깎는다
   g.filter = 'none';
@@ -1157,6 +1174,13 @@ function vividGlowImage(it, w, h = w, spreadK = 0.8) {
   return c;
 }
 
+// 번짐 범위 슬라이더(0~100). 25가 예전 크기, 100이면 카드를 가득 채운다
+function glowSpreadRaw() {
+  const v = parseFloat($('glowSpread').value);
+  return (isNaN(v) ? 25 : v) / 100;
+}
+function glowSpread() { return 0.8 + glowSpreadRaw() * 0.8 * 2; }
+
 function drawGlow(g, cx, cy, size, round, u, t) {
   if (state.glow === 'off') return;
   const { a, b, p } = imageAt(t);
@@ -1164,7 +1188,7 @@ function drawGlow(g, cx, cy, size, round, u, t) {
   const lv = levelAt(t);
   // 빛 세기: 100% 기준. 넘기면 더 진하고 넓게
   const amt = (parseFloat($('glowAmt').value) || 100) / 100;
-  const spread = 1 + Math.max(0, amt - 1) * 0.3;
+  const spread = glowSpread();
   if (state.glow === 'vivid') {
     // 넓게 퍼지는 빛 + 아트 바로 옆의 밝은 빛 두 겹. 소리에 맞춰 더 크게 숨 쉰다
     const wide = (it, w) => {
@@ -1262,6 +1286,12 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
   if (!items.length) return;
   const glitch = state.fx === 'glitch';
   const align = opt.align || 'center';
+  const style = opt.style || 'none';
+  const fxc = $('fxColor').value;
+  // 색: 직접 고르면 그 색, 아니면 배경에 맞춘 기본 색
+  const cMain = state.lyCustom ? $('lyColor').value : fg;
+  const cPron = state.lyCustom ? $('pronColor').value : dim;
+  const cTrans = state.lyCustom ? $('transColor').value : dim;
   const big = opt.big || 1;
   g.textAlign = align;
   g.textBaseline = 'top';
@@ -1273,11 +1303,11 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
     const S = { main: base * u * k * big, pron: base * 0.62 * u * k * big, trans: base * 0.72 * u * k * big };
     let h = 0;
     layout = items.map((it, i) => {
-      g.font = `600 ${S.main}px ${FONT}`;
+      g.font = `600 ${S.main}px ${LFONT}`;
       const main = wrap(g, it.text, maxW, one ? 2 : 2);
-      g.font = `500 ${S.pron}px ${FONT}`;
+      g.font = `500 ${S.pron}px ${LFONT}`;
       const pron = it.pron ? fitText(g, it.pron, maxW) : '';
-      g.font = `500 ${S.trans}px ${FONT}`;
+      g.font = `500 ${S.trans}px ${LFONT}`;
       const trans = it.trans ? wrap(g, it.trans, maxW, one ? 2 : 1) : [];
       const bh = (pron ? S.pron * 1.5 : 0) + main.length * S.main * 1.38 + trans.length * S.trans * 1.4 + (trans.length ? 3 * u : 0);
       h += bh + (i ? 10 * u * k * big : 0);
@@ -1288,26 +1318,44 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
     if (h <= y1 - y0) break;
   }
   const S = layout.S;
-  // 다음 줄: 자리가 남을 때만 흐리게 한 줄
-  let next = '';
-  if (opt.next && !still && items[0].next && layout.h + S.main * 1.5 <= y1 - y0) {
-    g.font = `600 ${S.main}px ${FONT}`;
-    next = fitText(g, items[0].next, maxW);
+  // 이전 줄·다음 줄: 자리가 남을 때만 흐리게 한 줄씩
+  const sideH = S.main * 1.38;
+  let next = '', prev = '';
+  g.font = `600 ${S.main}px ${LFONT}`;
+  if (opt.next && !still && items[0].next && layout.h + sideH <= y1 - y0) next = fitText(g, items[0].next, maxW);
+  if (opt.prev && !still && items[0].prev && layout.h + sideH * (next ? 2 : 1) <= y1 - y0) prev = fitText(g, items[0].prev, maxW);
+  const preH = prev ? sideH : 0, postH = next ? sideH : 0;
+  let y = opt.top ? y0 + preH
+    : opt.bottom ? y1 - layout.h - postH
+    : y0 + preH + Math.max(0, (y1 - y0 - layout.h - preH - postH) / 2);
+  if (prev) {
+    g.globalAlpha = 0.32;
+    g.fillStyle = cMain;
+    g.textAlign = align;
+    g.textBaseline = 'top';
+    g.fillText(prev, cx, y - sideH);
+    g.globalAlpha = 1;
   }
-  let y = opt.top ? y0 : y0 + Math.max(0, (y1 - y0 - layout.h) / 2);
-  if (opt.box) {
-    // 영상 자막처럼 글자 뒤에 반투명 검은 상자
-    let mw = 0;
-    for (const L of layout) {
-      g.font = `500 ${S.pron}px ${FONT}`; if (L.pron) mw = Math.max(mw, g.measureText(L.pron).width);
-      g.font = `600 ${S.main}px ${FONT}`; for (const x of L.main) mw = Math.max(mw, g.measureText(x).width);
-      g.font = `500 ${S.trans}px ${FONT}`; for (const x of L.trans) mw = Math.max(mw, g.measureText(x).width);
-    }
+  // 글자 칸(자막을 끌어 옮길 때 잡는 곳, 상자 크기)
+  let mwAll = 0;
+  for (const L of layout) {
+    g.font = `500 ${S.pron}px ${LFONT}`; if (L.pron) mwAll = Math.max(mwAll, g.measureText(L.pron).width);
+    g.font = `600 ${S.main}px ${LFONT}`; for (const x of L.main) mwAll = Math.max(mwAll, g.measureText(x).width);
+    g.font = `500 ${S.trans}px ${LFONT}`; for (const x of L.trans) mwAll = Math.max(mwAll, g.measureText(x).width);
+  }
+  if (opt.record) {
+    const bx = align === 'left' ? cx : align === 'right' ? cx - mwAll : cx - mwAll / 2;
+    opt.record.rect = { x: bx - 7 * u, y: y - 4 * u, w: mwAll + 14 * u, h: layout.h + 8 * u };
+  }
+  if (style === 'box') {
+    // 영상 자막처럼 글자 뒤에 반투명 상자
+    const mw = mwAll;
     const px = 7 * u * k, py = 4 * u * k;
-    g.globalAlpha = still ? 1 : layout[0].it.alpha;
-    g.fillStyle = 'rgba(8,8,8,0.72)';
+    g.globalAlpha = (still ? 1 : layout[0].it.alpha) * 0.75;
+    g.fillStyle = fxc;
+    const bx = align === 'left' ? cx : align === 'right' ? cx - mw : cx - mw / 2;
     g.beginPath();
-    g.roundRect(cx - mw / 2 - px, y - py, mw + px * 2, layout.h + py * 2 - S.main * 0.2, 3 * u);
+    g.roundRect(bx - px, y - py, mw + px * 2, layout.h + py * 2 - S.main * 0.2, 3 * u);
     g.fill();
     g.globalAlpha = 1;
   }
@@ -1318,36 +1366,54 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
     const a = gs > 0 && !fxStatic() && L.it.since < 0.3 ? (hash(Math.floor(L.it.at * 30)) < 0.35 ? 0.15 : 1) : alpha;
     // 글리치 넣을 곳으로 고른 부분만 글리치로 그린다
     const put = (text, size, weight, color, on) => {
-      g.font = `${weight} ${size}px ${FONT}`;
+      g.font = `${weight} ${size}px ${LFONT}`;
       if (on && gs > 0) {
         const tw = g.measureText(text).width;
-        drawGlitchText(g, text, align === 'left' ? cx + tw / 2 : align === 'right' ? cx - tw / 2 : cx, y, size, color, a, gs, u, L.it.at, weight);
+        drawGlitchText(g, text, align === 'left' ? cx + tw / 2 : align === 'right' ? cx - tw / 2 : cx, y, size, color, a, gs, u, L.it.at, weight, LFONT);
         g.textAlign = align;
         g.textBaseline = 'top';
       } else {
         g.globalAlpha = a;
+        if (style === 'stroke') {
+          // 테두리: 글자 바깥에 굵은 선을 먼저
+          g.strokeStyle = fxc;
+          g.lineWidth = Math.max(1.5, size * 0.18);
+          g.lineJoin = 'round';
+          g.strokeText(text, cx, y);
+        }
+        if (style === 'glow') {
+          // 빛: 같은 글자를 흐린 빛으로 두 번 깔고 위에 또렷하게
+          g.save();
+          g.shadowColor = fxc;
+          g.shadowBlur = size * 0.7;
+          g.fillStyle = color;
+          g.fillText(text, cx, y);
+          g.shadowBlur = size * 0.3;
+          g.fillText(text, cx, y);
+          g.restore();
+        }
         g.fillStyle = color;
         g.fillText(text, cx, y);
       }
     };
     if (L.pron) {
-      put(L.pron, S.pron, 500, dim, $('gPron').checked);
+      put(L.pron, S.pron, 500, cPron, $('gPron').checked);
       y += S.pron * 1.5;
     }
     for (const s of L.main) {
-      put(s, S.main, 600, fg, $('gMain').checked);
+      put(s, S.main, 600, cMain, $('gMain').checked);
       y += S.main * 1.38;
     }
     if (L.trans.length) {
       y += 3 * u;
-      for (const s of L.trans) { put(s, S.trans, 500, dim, $('gTrans').checked); y += S.trans * 1.4; }
+      for (const s of L.trans) { put(s, S.trans, 500, cTrans, $('gTrans').checked); y += S.trans * 1.4; }
     }
     y += 10 * u * k * big;
   }
   if (next) {
     g.globalAlpha = 0.32;
-    g.fillStyle = fg;
-    g.font = `600 ${S.main}px ${FONT}`;
+    g.fillStyle = cMain;
+    g.font = `600 ${S.main}px ${LFONT}`;
     g.fillText(next, cx, y - 4 * u);
   }
   g.globalAlpha = 1;
@@ -1356,8 +1422,8 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
 // 색이 갈라지고 가로 띠가 어긋나는 글씨
 const gBase = document.createElement('canvas');
 const gTint = document.createElement('canvas');
-function drawGlitchText(g, text, cx, y, size, fg, alpha, s, u, seed, weight = 600) {
-  const font = `${weight} ${size}px ${FONT}`;
+function drawGlitchText(g, text, cx, y, size, fg, alpha, s, u, seed, weight = 600, fam = FONT) {
+  const font = `${weight} ${size}px ${fam}`;
   const bc = gBase.getContext('2d');
   bc.font = font;
   const pad = Math.ceil(24 * u);
@@ -1440,6 +1506,8 @@ function drawControls(g, cx, cy, u, fg) {
   g.fillRect(cx - ps * 0.6, cy - ps, ps * 0.42, ps * 2);
   g.fillRect(cx + ps * 0.18, cy - ps, ps * 0.42, ps * 2);
 }
+
+function lyStyleOf() { return state.lyStyle[state.mode] || 'none'; }
 
 // ---------- 글자 묶음 자리 ----------
 // 제목 묶음(제목·가수)과 가사 묶음(가사·발음·번역)의 기본 자리. 옮긴 만큼 더하고 카드 안쪽으로 막는다
@@ -1543,7 +1611,7 @@ function render(g, W, t) {
     g.fillStyle = dim;
     g.font = `500 ${15 * u}px ${FONT}`;
     g.fillText(fitText(g, $('artist').value.trim(), tw), tx, y + 44 * u);
-    drawLyrics(g, x, 168 * u, H - 44 * u, W - 80 * u, u, fg, dim, t, { align: 'left', big: 1.35, top: true });
+    drawLyrics(g, x, 168 * u, H - 44 * u, W - 80 * u, u, fg, dim, t, { align: 'left', big: 1.35, top: true, style: lyStyleOf() });
   } else if (state.mode === 'player') {
     const s = 352 * u, x = (W - s) / 2, y = 44 * u;
     drawGlow(g, W / 2, y + s / 2, s, false, u, t);
@@ -1574,7 +1642,7 @@ function render(g, W, t) {
     g.restore();
     drawTitleBlock(g, B.title, tm, u, fg, dim, onArt);
     drawLyrics(g, B.lyric.ax, B.lyric.y, B.lyric.y + B.lyric.h, B.lyric.w, u, fg, dim, t,
-      { align: B.lyric.al, size: 21, next: $('nextLine').checked });
+      { align: B.lyric.al, size: 21, next: $('nextLine').checked, prev: $('prevLine').checked, style: lyStyleOf() });
     // 아래 여백을 위 여백(44)과 맞춘다
     drawProgress(g, x, 534 * u, s, u, fg, dim, t, T);
     drawControls(g, W / 2, 583 * u, u, fg);
@@ -1593,7 +1661,7 @@ function render(g, W, t) {
     const onDisc = overlaps(tm.rect, { x: W / 2 - 186 * u, y: 42 * u, w: 372 * u, h: 372 * u });
     drawTitleBlock(g, B.title, tm, u, fg, dim, onDisc);
     drawLyrics(g, B.lyric.ax, B.lyric.y, B.lyric.y + B.lyric.h, B.lyric.w, u, fg, dim, t,
-      { align: B.lyric.al, size: 19, next: $('nextLine').checked });
+      { align: B.lyric.al, size: 19, next: $('nextLine').checked, prev: $('prevLine').checked, style: lyStyleOf() });
     drawProgress(g, (W - 352 * u) / 2, 586 * u, 352 * u, u, fg, dim, t, T);
   }
   drawStickers(g, W, t);
@@ -1636,7 +1704,28 @@ function icon(g, name, cx, cy, size, color, flip = false) {
   g.restore();
 }
 
+// 글자를 cy 높이에 세로 가운데로. 글꼴마다 위아래 여백이 달라서 실제 글자 높이를 재서 맞춘다
+function textMetrics(g) {
+  g.textBaseline = 'alphabetic';
+  const m = g.measureText('가Ag');
+  return { asc: m.actualBoundingBoxAscent, desc: m.actualBoundingBoxDescent };
+}
+function midText(g, text, x, cy) {
+  const { asc, desc } = textMetrics(g);
+  g.textBaseline = 'alphabetic';
+  g.fillText(text, x, cy + (asc - desc) / 2);
+}
+
 function videoRect(u) { return { x: VID.x * u, y: VID.y * u, w: VID.w * u, h: VID.h * u }; }
+// 자막 자리: 가운데 x와 아래 끝 y. 영상 안쪽으로만
+function captionGeom(u) {
+  const v = videoRect(u);
+  const cx = Math.max(v.x + 60 * u, Math.min(v.x + v.w - 60 * u, v.x + v.w / 2 + state.capPos.dx * u));
+  const bottom = Math.max(v.y + 34 * u, Math.min(v.y + v.h - 6 * u, v.y + v.h - 34 * u + state.capPos.dy * u));
+  const maxW = Math.min(v.w * 0.82, 2 * Math.min(cx - v.x, v.x + v.w - cx) - 16 * u);
+  return { cx, bottom, maxW };
+}
+let capRect = null;  // 미리보기에 그려진 자막 칸
 
 function drawVideoPage(g, W, H, u, t, T) {
   const dark = $('ytDark').checked;
@@ -1655,10 +1744,12 @@ function drawVideoPage(g, W, H, u, t, T) {
       const lv = levelAt(t);
       const amt = (parseFloat($('glowAmt').value) || 100) / 100;
       // 영상 둘레에만 퍼지게(페이지 배경색은 지킨다)
-      const base = (state.glow === 'vivid' ? 0.85 : 0.5) * (dark ? 1 : 0.3);
-      const sc = (1 + 0.05 * lv) * (1 + Math.max(0, amt - 1) * 0.3);
+      // 영상 둘레로 번지는 빛. 번짐 범위를 올리면 페이지 전체로
+      const base = (state.glow === 'vivid' ? 1 : 0.75) * (dark ? 1 : 0.45);
+      const sc = 1 + 0.05 * lv;
       const one = (it, k) => {
-        const c = vividGlowImage(it, Math.round(v.w), Math.round(v.h), state.glow === 'vivid' ? 0.3 : 0.18);
+        const sk = Math.round((0.12 + glowSpreadRaw() * 1.1) * 20) / 20;
+        const c = vividGlowImage(it, Math.round(v.w), Math.round(v.h), sk);
         const w2 = c.width * sc, h2 = c.height * sc;
         g.globalAlpha = Math.min(1, base * (0.8 + 0.4 * lv) * amt) * k;
         g.drawImage(c, v.x + v.w / 2 - w2 / 2, v.y + v.h / 2 - h2 / 2, w2, h2);
@@ -1678,9 +1769,12 @@ function drawVideoPage(g, W, H, u, t, T) {
   g.fillRect(v.x, v.y, v.w, v.h);
   drawArt(g, v.x, v.y, v.w, v.h, t);
   drawBokeh(g, v.x, v.y, v.w, v.h, t);
-  // 자막
-  drawLyrics(g, v.x + v.w / 2, v.y + v.h * 0.45, v.y + v.h - 34 * u, v.w * 0.82, u, '#ffffff', 'rgba(255,255,255,0.78)', t,
-    { align: 'center', size: 12, box: true });
+  // 자막: 아래쪽 가운데가 기본, 끌어서 옮긴 만큼 이동(영상 안에서만)
+  const cap = captionGeom(u);
+  const rec = {};
+  drawLyrics(g, cap.cx, v.y + 8 * u, cap.bottom, cap.maxW, u, '#ffffff', 'rgba(255,255,255,0.78)', t,
+    { align: 'center', size: 12, bottom: true, style: lyStyleOf(), record: rec, prev: $('prevLine').checked, next: $('nextLine').checked });
+  if (g === ctx) capRect = rec.rect || null;
   // 아래쪽 조작 막대
   const grad = g.createLinearGradient(0, v.y + v.h - 46 * u, 0, v.y + v.h);
   grad.addColorStop(0, 'rgba(0,0,0,0)');
@@ -1703,14 +1797,13 @@ function drawVideoPage(g, W, H, u, t, T) {
   g.fillStyle = white;
   g.font = `500 ${8 * u}px ${FONT}`;
   g.textAlign = 'left';
-  g.textBaseline = 'middle';
-  g.fillText(`${fmt(now)} / ${fmt(total)}`, v.x + 78 * u, iy);
+  midText(g, `${fmt(now)} / ${fmt(total)}`, v.x + 78 * u, iy);
   icon(g, 'full', v.x + v.w - 18 * u, iy, isz, white);
   icon(g, 'gear', v.x + v.w - 40 * u, iy, isz, white);
   icon(g, 'cc', v.x + v.w - 62 * u, iy, isz, white);
   g.font = `700 ${4.6 * u}px ${FONT}`;
   g.textAlign = 'center';
-  g.fillText('CC', v.x + v.w - 62 * u, iy + 0.3 * u);
+  midText(g, 'CC', v.x + v.w - 62 * u, iy);
   g.restore();
 
   // 영상 제목
@@ -1736,8 +1829,7 @@ function drawVideoPage(g, W, H, u, t, T) {
     g.fillStyle = '#fff';
     g.font = `600 ${11 * u}px ${FONT}`;
     g.textAlign = 'center';
-    g.textBaseline = 'middle';
-    g.fillText(chName.slice(0, 1).toUpperCase(), ax, ry + 0.5 * u);
+    midText(g, chName.slice(0, 1).toUpperCase(), ax, ry);
   }
   g.restore();
 
@@ -1751,8 +1843,7 @@ function drawVideoPage(g, W, H, u, t, T) {
       g.fillStyle = fg;
       g.font = `600 ${8 * u}px ${FONT}`;
       g.textAlign = 'left';
-      g.textBaseline = 'middle';
-      g.fillText(label, tx, ry + 0.3 * u);
+      midText(g, label, tx, ry);
     }
   };
   const measure = (label, iconName) => {
@@ -1776,20 +1867,28 @@ function drawVideoPage(g, W, H, u, t, T) {
   // 왼쪽: 채널 이름·구독자·구독 버튼
   const subs = $('subs').value.trim();
   const nx = ax + ar + 8 * u;
-  g.fillStyle = fg;
-  g.font = `600 ${9.5 * u}px ${FONT}`;
-  g.textAlign = 'left';
-  g.textBaseline = subs ? 'alphabetic' : 'middle';
   const nameMax = 120 * u;
+  g.textAlign = 'left';
+  g.font = `600 ${9.5 * u}px ${FONT}`;
   const nameText = fitText(g, chName, nameMax);
-  g.fillText(nameText, nx, subs ? ry - 1 * u : ry);
+  const nm = textMetrics(g);
   let leftEnd = nx + g.measureText(nameText).width;
-  if (subs) {
+  g.fillStyle = fg;
+  if (!subs) midText(g, nameText, nx, ry);
+  else {
+    // 이름과 구독자 두 줄을 한 덩어리로 보고 세로 가운데
+    g.font = `400 ${7.5 * u}px ${FONT}`;
+    const sm = textMetrics(g);
+    const st = fitText(g, subs, nameMax);
+    const gapY = 3 * u;
+    const total = nm.asc + nm.desc + gapY + sm.asc + sm.desc;
+    const top = ry - total / 2;
+    g.textBaseline = 'alphabetic';
+    g.font = `600 ${9.5 * u}px ${FONT}`;
+    g.fillText(nameText, nx, top + nm.asc);
     g.fillStyle = dim;
     g.font = `400 ${7.5 * u}px ${FONT}`;
-    g.textBaseline = 'top';
-    const st = fitText(g, subs, nameMax);
-    g.fillText(st, nx, ry + 1.5 * u);
+    g.fillText(st, nx, top + nm.asc + nm.desc + gapY + sm.asc);
     leftEnd = Math.max(leftEnd, nx + g.measureText(st).width);
   }
   const subX = leftEnd + 12 * u;
@@ -1799,8 +1898,7 @@ function drawVideoPage(g, W, H, u, t, T) {
   g.beginPath(); g.roundRect(subX, ry - 11 * u, subW, 22 * u, 11 * u); g.fill();
   g.fillStyle = dark ? '#0f0f0f' : '#ffffff';
   g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText('구독', subX + subW / 2, ry + 0.3 * u);
+  midText(g, '구독', subX + subW / 2, ry);
   const leftLimit = subX + subW + 10 * u;
 
   // 자리가 모자라면 오프라인 저장 → 공유 순으로 뺀다
@@ -1818,8 +1916,7 @@ function drawVideoPage(g, W, H, u, t, T) {
       g.fillStyle = fg;
       g.font = `600 ${8 * u}px ${FONT}`;
       g.textAlign = 'left';
-      g.textBaseline = 'middle';
-      g.fillText(likes, tx, ry + 0.3 * u);
+      midText(g, likes, tx, ry);
       tx += g.measureText(likes).width + 4 * u;
     }
     g.fillStyle = dark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.1)';
@@ -2033,7 +2130,9 @@ function drawDisc(g, cx, cy, R, u, t, T) {
 
   // 루프가 끊기지 않도록 전체 길이 동안 정수 바퀴만 돈다
   const turns = Math.max(1, Math.round(T / CD_TURN));
-  const ang = $('spin').checked ? (t / T) * turns * Math.PI * 2 : 0;
+  // 디스크 각도: 멈춘 화면·이미지 저장은 정한 각도 그대로, 재생은 그 각도에서 출발해 돈다
+  const off = ((parseFloat($('discAngle').value) || 0) * Math.PI) / 180;
+  const ang = $('spin').checked && !fxStatic() ? off + (t / T) * turns * Math.PI * 2 : off;
 
   d.save();
   d.beginPath(); d.arc(c, c, R, 0, Math.PI * 2); d.clip();
@@ -2124,6 +2223,7 @@ function updateInfo() {
   let s = `${fmt(T)} · GIF ${p.frames}장`;
   if (p.over) s += ' — 트위터 GIF는 350장까지라 구간을 줄여야 합니다';
   else if (p.lowered) s += ` · 트위터 350장 한도라 초당 ${p.fps}장으로 낮춤`;
+  if (view.hideFx) s += ' · 효과 숨김 상태로 저장됩니다';
   $('exportInfo').textContent = s;
 }
 
@@ -2139,9 +2239,8 @@ function tick(now) {
   }
   sizeStage();
   view.frozen = !state.playing && !state.tap;
-  view.hideFx = !fxVisible;
   render(ctx, stage.width, state.t);
-  view.frozen = view.hideFx = false;
+  view.frozen = false;
   drawGuides();
   drawWave();
   sceneTick();
@@ -2768,11 +2867,38 @@ function syncFx() {
   $('gTargets').hidden = state.fx !== 'glitch';
   $('spinRow').hidden = state.mode !== 'cd';
   $('ytDarkRow').hidden = state.mode !== 'yt';
+  $('discAngleRow').hidden = state.mode !== 'cd';
+  $('glowSpreadRow').hidden = state.glow === 'off';
+  if ($('lyStyle')) syncLyStyle();
   $('chGroup').hidden = state.mode !== 'yt';
   syncSizeLabels();
   $('glowAmtRow').hidden = state.glow === 'off';
 }
-for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'beatSync', 'spin', 'ytDark']) $(id).addEventListener('change', saveSettings);
+for (const id of ['bokeh', 'gMain', 'gPron', 'gTrans', 'nextLine', 'prevLine', 'beatSync', 'spin', 'ytDark', 'gapCalc']) $(id).addEventListener('change', saveSettings);
+
+// 가사 스타일은 모양마다 기억한다. 색 칸 이름은 스타일을 따라 바뀐다
+function syncLyStyle() {
+  const st = lyStyleOf();
+  for (const b of $('lyStyle').querySelectorAll('button')) b.setAttribute('aria-pressed', String(b.dataset.v === st));
+  $('fxColorRow').hidden = st === 'none';
+  $('fxColorLbl').textContent = { box: '상자 색', stroke: '테두리 색', glow: '빛 색' }[st] || '';
+}
+$('lyStyle').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  state.lyStyle[state.mode] = b.dataset.v;
+  syncLyStyle();
+  saveSettings();
+});
+// 글자색을 하나라도 고르면 그때부터 직접 고른 색을 쓴다
+for (const id of ['lyColor', 'pronColor', 'transColor']) $(id).addEventListener('input', () => { state.lyCustom = true; saveSettings(); });
+$('lyColorReset').addEventListener('click', () => {
+  state.lyCustom = false;
+  $('lyColor').value = '#ffffff';
+  $('pronColor').value = $('transColor').value = '#d9d9d9';
+  $('fxColor').value = '#000000';
+  saveSettings();
+});
 
 // 글자 정렬은 묶음마다, 모양(플레이어/CD)마다 따로 기억한다
 const ALIGN_SEGS = { alignTitle: 'title', alignLyric: 'lyric' };
@@ -2811,11 +2937,14 @@ $('gmap').addEventListener('change', syncGmap);
 async function applyFont() {
   const name = $('font').value;
   FONT = `"${name}", ${BASE_FONT}`;
+  const ly = $('lyFont').value;
+  LFONT = ly ? `"${ly}", ${BASE_FONT}` : FONT;
   try {
-    await Promise.all(['500', '600', '700'].map((w) => document.fonts.load(`${w} 20px "${name}"`, '가A')));
+    await Promise.all(['500', '600', '700'].flatMap((w) => [name, ly].filter(Boolean).map((n) => document.fonts.load(`${w} 20px "${n}"`, '가A'))));
   } catch (e) {}
 }
 $('font').addEventListener('change', applyFont);
+$('lyFont').addEventListener('change', applyFont);
 
 // ---------- 미리보기 위에서 끌기·휠: 스티커 > 이미지 ----------
 function artRect() {
@@ -2842,6 +2971,7 @@ function hitAt(e) {
     const lx = dx * Math.cos(a) - dy * Math.sin(a), ly = dx * Math.sin(a) + dy * Math.cos(a);
     if (Math.abs(lx) <= w / 2 && Math.abs(ly) <= h / 2) return { type: 'sticker', st, p };
   }
+  if (state.mode === 'yt' && capRect && inBox(p, capRect)) return { type: 'caption', p };
   if (currentImage() && inBox(p, artRect())) return { type: 'art', p };
   return null;
 }
@@ -2869,6 +2999,7 @@ stage.addEventListener('pointerdown', (e) => {
   stage.setPointerCapture(e.pointerId);
   const p = hit.p;
   if (hit.type === 'sticker') { selectSticker(hit.st); sdrag = { ...hit, x0: hit.st.x, y0: hit.st.y }; }
+  else if (hit.type === 'caption') sdrag = { ...hit, dx0: state.capPos.dx, dy0: state.capPos.dy };
   else {
     const it = currentImage();
     sdrag = { ...hit, it, fx: it.fx ?? 0.5, fy: it.fy ?? 0.5 };
@@ -2890,6 +3021,13 @@ stage.addEventListener('pointermove', (e) => {
     sdrag.st.x = sdrag.x0 + mx / W;
     sdrag.st.y = sdrag.y0 + my / H;
     clampSticker(sdrag.st);
+  } else if (sdrag.type === 'caption') {
+    state.capPos.dx = sdrag.dx0 + mx / u;
+    state.capPos.dy = sdrag.dy0 + my / u;
+    // 영상 밖으로 나간 만큼은 저장하지 않는다
+    const v = videoRect(u), cap = captionGeom(u);
+    state.capPos.dx = (cap.cx - (v.x + v.w / 2)) / u;
+    state.capPos.dy = (cap.bottom - (v.y + v.h - 34 * u)) / u;
   } else {
     const it = sdrag.it, a = artRect();
     const img = srcOf(it);
@@ -2905,6 +3043,7 @@ stage.addEventListener('pointermove', (e) => {
 const endDrag = () => {
   if (!sdrag) return;
   if (sdrag.type === 'art') dropAllFitCache(sdrag.it);
+  if (sdrag.type === 'caption') saveSettings();
   sdrag = null;
   stage.classList.remove('panning');
 };
@@ -2914,6 +3053,7 @@ stage.addEventListener('pointerleave', () => { if (!sdrag) { hover = null; showH
 const HINTS = {
   art: '끌어서 이동 · 휠로 확대 · 두 번 눌러 되돌리기',
   sticker: '끌어서 이동 · 휠로 크기 · Delete로 지우기',
+  caption: '끌어서 자막 옮기기 · 두 번 눌러 되돌리기',
 };
 function showHint(h) {
   const el = $('canvasHint');
@@ -2923,7 +3063,7 @@ function showHint(h) {
 }
 stage.addEventListener('wheel', (e) => {
   const hit = hitAt(e);
-  if (!hit) return;
+  if (!hit || hit.type === 'caption') return;
   e.preventDefault();
   const k = e.deltaY < 0 ? 1.08 : 1 / 1.08;
   if (hit.type === 'sticker') {
@@ -2940,7 +3080,10 @@ stage.addEventListener('wheel', (e) => {
 stage.addEventListener('dblclick', (e) => {
   const hit = hitAt(e);
   if (!hit) return;
-  if (hit.type === 'art') {
+  if (hit.type === 'caption') {
+    state.capPos.dx = state.capPos.dy = 0;
+    saveSettings();
+  } else if (hit.type === 'art') {
     const it = currentImage();
     it.fx = it.fy = 0.5;
     it.zoom = 1;
@@ -2952,6 +3095,21 @@ stage.addEventListener('dblclick', (e) => {
 // 미리보기에만 그리는 안내선: 스티커가 움직일 수 있는 영역과 지금 잡은 스티커
 function drawGuides() {
   const t0 = sdrag || hover;
+  if (t0 && t0.type === 'caption' && capRect) {
+    const u = stage.width / 480;
+    ctx.save();
+    ctx.lineWidth = Math.max(1, 1.2 * u);
+    ctx.setLineDash([5 * u, 4 * u]);
+    if (sdrag) {
+      const v = videoRect(u);
+      ctx.strokeStyle = 'rgba(255,255,255,0.45)';
+      ctx.strokeRect(v.x + 4 * u, v.y + 4 * u, v.w - 8 * u, v.h - 8 * u);
+    }
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.strokeRect(capRect.x, capRect.y, capRect.w, capRect.h);
+    ctx.restore();
+    return;
+  }
   const tgt = t0 && t0.type === 'sticker' ? t0 : selSticker ? { type: 'sticker', st: selSticker } : null;
   if (!tgt || !state.stickers.includes(tgt.st)) return;
   const W = stage.width, H = stage.height, u = W / 480, m = EDGE * u;
@@ -2995,6 +3153,7 @@ audioDrop.addEventListener('drop', (e) => {
 $('audioRemove').addEventListener('click', removeAudio);
 
 $('findLyrics').addEventListener('click', findLyrics);
+$('discAngle').addEventListener('input', () => { $('discAngleVal').textContent = `${$('discAngle').value}°`; });
 $('avatarFile').addEventListener('change', (e) => { setAvatar(e.target.files[0]); e.target.value = ''; });
 $('refit').addEventListener('click', () => {
   for (const it of state.images) it.lsec = undefined;
@@ -3015,6 +3174,9 @@ $('saveStill').addEventListener('click', () => { closeExport(); openPicker(); })
 let fxVisible = true;
 $('eyeBtn').addEventListener('click', () => {
   fxVisible = !fxVisible;
+  // 저장도 보이는 대로: 눈을 감으면 이미지·GIF·MP4 모두 효과 없이
+  view.hideFx = !fxVisible;
+  updateInfo();
   $('eyeBtn').setAttribute('aria-pressed', String(fxVisible));
   $('eyeBtn').setAttribute('aria-label', fxVisible ? '효과 숨기기' : '효과 보이기');
 });
@@ -3087,6 +3249,8 @@ let notesTimer = 0;
 $('lyrics').addEventListener('input', () => { clearTimeout(notesTimer); notesTimer = setTimeout(renderNotes, 400); });
 
 loadSettings();
+$('discAngleVal').textContent = `${$('discAngle').value}°`;
+syncLyStyle();
 syncImgMode();
 syncFx();
 syncAlign();

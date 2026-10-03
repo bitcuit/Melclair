@@ -309,6 +309,7 @@
     <button data-v="yt" aria-pressed="false">동영상</button>
   </div>
   <label class="check" id="spinRow" hidden><input type="checkbox" id="spin" checked>CD 돌리기</label>
+  <label class="row" id="discAngleRow" hidden><span class="lbl">디스크 각도</span><input type="range" id="discAngle" min="0" max="359" step="1" value="0" style="width:110px;accent-color:var(--text)"><span class="unit" id="discAngleVal" style="width:32px">0°</span></label>
   <label class="check" id="ytDarkRow" hidden><input type="checkbox" id="ytDark" checked>어두운 화면</label>
   <span class="grow"></span>
   <span class="status" id="status"></span>
@@ -467,8 +468,12 @@
       <span class="gl">시간</span>
       <div class="row"><span class="lbl">박자 없는 줄 길이</span><input type="number" id="lineSec" min="0.5" step="0.5" value="3"><span class="unit">초</span></div>
       <div class="row"><span class="lbl">가사 늦추기</span><input type="number" id="shift" step="0.1" value="0"><span class="unit">초</span></div>
+      <label class="check"><input type="checkbox" id="gapCalc" checked>반주·빈 구간 계산</label>
     </div>
-    <label class="check"><input type="checkbox" id="nextLine">다음 줄 보이기</label>
+    <div class="row" style="gap:18px">
+      <label class="check"><input type="checkbox" id="prevLine">이전 줄 보이기</label>
+      <label class="check"><input type="checkbox" id="nextLine">다음 줄 보이기</label>
+    </div>
   </div>
 
   <!-- 글자 -->
@@ -476,7 +481,8 @@
     <h2>글자</h2>
     <div class="group">
       <span class="gl">글꼴</span>
-      <select id="font">
+      <div class="row"><span class="lbl">화면 글자</span>
+      <select id="font" style="width:180px;flex:none">
         <option value="Pretendard">프리텐다드</option>
         <option value="Noto Sans KR">본고딕</option>
         <option value="IBM Plex Sans KR">IBM Plex Sans KR</option>
@@ -492,7 +498,25 @@
         <option value="Hahmlet">함렛</option>
         <option value="Song Myung">송명</option>
         <option value="Nanum Pen Script">나눔손글씨 펜</option>
-      </select>
+      </select></div>
+      <div class="row"><span class="lbl">가사</span>
+      <select id="lyFont" style="width:180px;flex:none"><option value="">화면 글자와 같게</option>
+        <option value="Pretendard">프리텐다드</option>
+        <option value="Noto Sans KR">본고딕</option>
+        <option value="IBM Plex Sans KR">IBM Plex Sans KR</option>
+        <option value="Gowun Dodum">고운 돋움</option>
+        <option value="Do Hyeon">도현</option>
+        <option value="Jua">주아</option>
+        <option value="Black Han Sans">검은고딕</option>
+        <option value="Orbit">오르빗</option>
+        <option value="Galmuri11">갈무리 (픽셀)</option>
+        <option value="Noto Serif KR">본명조</option>
+        <option value="Nanum Myeongjo">나눔명조</option>
+        <option value="Gowun Batang">고운 바탕</option>
+        <option value="Hahmlet">함렛</option>
+        <option value="Song Myung">송명</option>
+        <option value="Nanum Pen Script">나눔손글씨 펜</option>
+      </select></div>
     </div>
     <div class="group">
       <span class="gl">정렬</span>
@@ -512,6 +536,20 @@
           <button data-v="right">오른쪽</button>
         </div>
       </div>
+    </div>
+    <div class="group">
+      <span class="gl">가사 스타일</span>
+      <div class="seg" id="lyStyle">
+        <button data-v="none">없음</button>
+        <button data-v="box">상자</button>
+        <button data-v="stroke">테두리</button>
+        <button data-v="glow">빛</button>
+      </div>
+      <div class="row" id="fxColorRow"><span class="lbl" id="fxColorLbl">상자 색</span><input type="color" id="fxColor" value="#000000"></div>
+      <div class="row"><span class="lbl">가사 색</span><input type="color" id="lyColor" value="#ffffff"></div>
+      <div class="row"><span class="lbl">발음 색</span><input type="color" id="pronColor" value="#d9d9d9"></div>
+      <div class="row"><span class="lbl">번역 색</span><input type="color" id="transColor" value="#d9d9d9"></div>
+      <div class="row"><span class="lbl"></span><button class="btn ghost" id="lyColorReset">기본 색으로</button></div>
     </div>
   </div>
 
@@ -569,6 +607,7 @@
         </div>
       </div>
       <div class="row" id="glowAmtRow"><span class="lbl">빛 세기</span><input type="range" id="glowAmt" min="0" max="150" step="5" value="100" style="flex:1;accent-color:var(--text)"></div>
+      <div class="row" id="glowSpreadRow"><span class="lbl">번짐 범위</span><input type="range" id="glowSpread" min="0" max="100" step="5" value="25" style="flex:1;accent-color:var(--text)"></div>
     </div>
   </div>
 
