@@ -742,6 +742,21 @@
       <div class="row" id="glowAmtRow"><span class="lbl">빛 세기</span><input type="range" id="glowAmt" min="0" max="150" step="5" value="100" style="flex:1;accent-color:var(--text)"></div>
       <div class="row" id="glowSpreadRow"><span class="lbl">번짐 범위</span><input type="range" id="glowSpread" min="0" max="100" step="5" value="25" style="flex:1;accent-color:var(--text)"></div>
     </div>
+    <div class="group">
+      <span class="gl">필름 · 색</span>
+      <div class="seg" id="retro">
+        <button data-v="none" aria-pressed="true">없음</button>
+        <button data-v="film" aria-pressed="false">필름</button>
+        <button data-v="vhs" aria-pressed="false">VHS</button>
+      </div>
+      <div class="row"><span class="lbl">밝기</span><input type="range" id="fxBright" min="-50" max="50" step="1" value="0" style="flex:1"></div>
+      <div class="row"><span class="lbl">대비</span><input type="range" id="fxContrast" min="-50" max="50" step="1" value="0" style="flex:1"></div>
+      <div class="row"><span class="lbl">채도</span><input type="range" id="fxSat" min="-100" max="100" step="1" value="0" style="flex:1"></div>
+      <div class="row"><span class="lbl">색온도</span><input type="range" id="fxTemp" min="-50" max="50" step="1" value="0" style="flex:1"></div>
+      <div class="row"><span class="lbl">비그넷</span><input type="range" id="fxVignette" min="0" max="100" step="1" value="0" style="flex:1"></div>
+      <div class="row"><span class="lbl">그레인</span><input type="range" id="fxGrain" min="0" max="100" step="1" value="0" style="flex:1"></div>
+      <div class="row"><span class="lbl">흔들림</span><input type="range" id="fxShake" min="0" max="100" step="1" value="0" style="flex:1"></div>
+    </div>
   </div>
 
   <!-- 스티커 -->

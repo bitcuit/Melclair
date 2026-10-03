@@ -28,6 +28,7 @@ const state = {
   fx: 'fade',        // 가사 효과
   imgTrans: 'fade',  // 이미지가 바뀔 때
   glow: 'soft',      // 주변 빛: off | soft | vivid
+  retro: 'none',     // 필름 분위기: none | film | vhs
   lyStyle: { player: 'none', cd: 'none', yt: 'box' },  // 가사 스타일(모양마다): none | box | stroke | glow
   lyCustom: false,   // 가사 색을 직접 골랐는지(아니면 배경에 맞춘 기본 색)
   capPos: { dx: 0, dy: 0 },  // 동영상 자막 자리(옮긴 만큼, u 단위)
@@ -41,12 +42,12 @@ const state = {
 let still = null;
 
 // ---------- 설정 저장 (텍스트만) ----------
-const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font', 'glowAmt', 'chName', 'subs', 'likes', 'vTitle', 'glowSpread', 'discAngle', 'lyFont', 'lyColor', 'pronColor', 'transColor', 'fxColor'];
+const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font', 'glowAmt', 'chName', 'subs', 'likes', 'vTitle', 'glowSpread', 'discAngle', 'fxBright', 'fxContrast', 'fxSat', 'fxTemp', 'fxVignette', 'fxGrain', 'fxShake', 'lyFont', 'lyColor', 'pronColor', 'transColor', 'fxColor'];
 function settingsObj() {
   const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glow: state.glow, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans, imgMode: state.imgMode,
       bokeh: $('bokeh').checked, gMain: $('gMain').checked, gPron: $('gPron').checked, gTrans: $('gTrans').checked,
       align: state.align, nextLine: $('nextLine').checked, prevLine: $('prevLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked, ytDark: $('ytDark').checked,
-      lyStyle: state.lyStyle, lyCustom: state.lyCustom, capPos: state.capPos, gapCalc: $('gapCalc').checked };
+      retro: state.retro, lyStyle: state.lyStyle, lyCustom: state.lyCustom, capPos: state.capPos, gapCalc: $('gapCalc').checked };
   for (const f of FIELDS) o[f] = $(f).value;
   return o;
 }
@@ -69,6 +70,7 @@ function loadSettings() {
     if (o.imgGlitch != null) $('imgGlitch').checked = o.imgGlitch;
     if (o.imgTrans) setSeg('imgTrans', o.imgTrans);
     if (o.lyStyle) Object.assign(state.lyStyle, o.lyStyle);
+    if (o.retro) setSeg('retro', o.retro);
     if (o.lyCustom != null) state.lyCustom = o.lyCustom;
     if (o.capPos) Object.assign(state.capPos, o.capPos);
     if (o.imgMode) setSeg('imgMode', o.imgMode);
@@ -1583,6 +1585,7 @@ function render(g, W, t) {
   if (state.mode === 'yt') {
     drawVideoPage(g, W, H, u, t, T);
     drawStickers(g, W, t);
+    postFx(g, W, H, t);
     g.restore();
     return;
   }
@@ -1668,6 +1671,125 @@ function render(g, W, t) {
     drawProgress(g, (W - 352 * u) / 2, 586 * u, 352 * u, u, fg, dim, t, T);
   }
   drawStickers(g, W, t);
+  postFx(g, W, H, t);
+  g.restore();
+}
+
+// ---------- 필름 · 색: 다 그린 화면 위에 마지막으로 ----------
+// 색 보정(밝기·대비·채도·색온도), 비그넷, 그레인, 흔들림, VHS(주사선·색 번짐·트래킹 띠)
+const RETRO = {
+  none: { fxBright: 0, fxContrast: 0, fxSat: 0, fxTemp: 0, fxVignette: 0, fxGrain: 0, fxShake: 0 },
+  film: { fxBright: -4, fxContrast: 10, fxSat: -12, fxTemp: 14, fxVignette: 45, fxGrain: 35, fxShake: 12 },
+  vhs: { fxBright: 4, fxContrast: -6, fxSat: -18, fxTemp: -6, fxVignette: 30, fxGrain: 22, fxShake: 22 },
+};
+const RETRO_IDS = Object.keys(RETRO.none);
+let postCanvas = null;
+const grainTiles = [];
+function grainTile(k) {
+  if (!grainTiles.length) {
+    // 무늬가 티 나지 않게 서로 다른 잡티 판 4장을 미리 만든다(같은 시각이면 늘 같은 판)
+    for (let n = 0; n < 4; n++) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 160;
+      const g = c.getContext('2d');
+      const d = g.createImageData(160, 160);
+      for (let i = 0; i < d.data.length; i += 4) {
+        const v = Math.floor(hash(i * 0.37 + n * 977) * 255);
+        d.data[i] = d.data[i + 1] = d.data[i + 2] = v;
+        d.data[i + 3] = 255;
+      }
+      g.putImageData(d, 0, 0);
+      grainTiles.push(c);
+    }
+  }
+  return grainTiles[k % grainTiles.length];
+}
+function postFx(g, W, H, t) {
+  const v = (id) => parseFloat($(id).value) || 0;
+  const br = v('fxBright'), ct = v('fxContrast'), sa = v('fxSat'), tp = v('fxTemp');
+  const vg = v('fxVignette'), gr = v('fxGrain'), shk = v('fxShake');
+  const vhs = state.retro === 'vhs';
+  // 움직이는 것(그레인·흔들림·VHS)은 눈을 감으면 숨기고, 멈춘 화면에서는 흔들지 않는다
+  const live = !view.hideFx;
+  const shake = live && !fxStatic() ? shk : 0;
+  if (!(br || ct || sa || tp || vg || (live && (gr || shk || vhs)))) return;
+  const u = W / 480;
+  const T = duration();
+  const k = Math.floor(t * 12);
+
+  // 1) 색 보정·흔들림·VHS 색 번짐: 지금 화면을 복사해 다시 그린다
+  if (br || ct || sa || shake || (live && vhs)) {
+    if (!postCanvas) postCanvas = document.createElement('canvas');
+    if (postCanvas.width !== W || postCanvas.height !== H) { postCanvas.width = W; postCanvas.height = H; }
+    const pc = postCanvas.getContext('2d');
+    pc.clearRect(0, 0, W, H);
+    pc.drawImage(g.canvas, 0, 0, W, H, 0, 0, W, H);
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.filter = `brightness(${1 + br / 100}) contrast(${1 + ct / 100}) saturate(${1 + sa / 100})`;
+    const dx = shake ? (hash(k * 1.3) - 0.5) * shake * 0.14 * u : 0;
+    const dy = shake ? (hash(k * 2.7) - 0.5) * shake * 0.1 * u : 0;
+    const sc = 1 + shake * 0.0008;   // 흔들려도 가장자리가 비지 않게 살짝 키운다
+    g.drawImage(postCanvas, (W - W * sc) / 2 + dx, (H - H * sc) / 2 + dy, W * sc, H * sc);
+    g.filter = 'none';
+    if (live && vhs) {
+      g.globalCompositeOperation = 'screen';
+      g.globalAlpha = 0.16;
+      g.filter = 'sepia(1) saturate(8) hue-rotate(-40deg)';
+      g.drawImage(postCanvas, -2.2 * u, 0, W, H);
+      g.filter = 'sepia(1) saturate(8) hue-rotate(160deg)';
+      g.drawImage(postCanvas, 2.2 * u, 0, W, H);
+      g.filter = 'none';
+      g.globalAlpha = 1;
+      g.globalCompositeOperation = 'source-over';
+      // 트래킹 띠: 위에서 아래로 천천히(전체 길이에 맞춰 반복이 끊기지 않게)
+      const cyc = Math.max(1, Math.round(T / 6));
+      const by = ((t / T) * cyc % 1) * (H + 40 * u) - 20 * u;
+      const bh = 14 * u;
+      g.drawImage(postCanvas, 0, Math.max(0, by), W, bh, 7 * u, Math.max(0, by), W, bh);
+      g.fillStyle = 'rgba(255,255,255,0.06)';
+      g.fillRect(0, by, W, bh);
+    }
+    g.restore();
+  }
+  g.save();
+  g.setTransform(1, 0, 0, 1, 0, 0);
+  // 2) 색온도: 따뜻하면 주황, 차가우면 파랑을 부드럽게 덮는다
+  if (tp) {
+    g.globalCompositeOperation = 'soft-light';
+    g.globalAlpha = Math.min(1, Math.abs(tp) / 100 * 0.9);
+    g.fillStyle = tp > 0 ? '#ff9a3c' : '#3c8cff';
+    g.fillRect(0, 0, W, H);
+  }
+  // 3) VHS 주사선
+  if (live && vhs) {
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 0.13;
+    g.fillStyle = '#000';
+    for (let y = 0; y < H; y += 3 * u) g.fillRect(0, y, W, Math.max(1, u));
+  }
+  // 4) 비그넷
+  if (vg) {
+    g.globalCompositeOperation = 'source-over';
+    g.globalAlpha = 1;
+    const r = Math.hypot(W, H) / 2;
+    const vgr = g.createRadialGradient(W / 2, H / 2, r * (0.75 - vg / 250), W / 2, H / 2, r);
+    vgr.addColorStop(0, 'rgba(0,0,0,0)');
+    vgr.addColorStop(1, `rgba(0,0,0,${(vg / 100) * 0.8})`);
+    g.fillStyle = vgr;
+    g.fillRect(0, 0, W, H);
+  }
+  // 5) 그레인: 시각마다 잡티 판과 자리를 바꾼다
+  if (live && gr) {
+    const tile = grainTile(Math.floor(t * 24));
+    const pat = g.createPattern(tile, 'repeat');
+    const ox = Math.floor(hash(Math.floor(t * 24) * 3.1) * 160), oy = Math.floor(hash(Math.floor(t * 24) * 5.7) * 160);
+    pat.setTransform(new DOMMatrix([Math.max(1, u * 0.9), 0, 0, Math.max(1, u * 0.9), ox, oy]));
+    g.globalCompositeOperation = 'overlay';
+    g.globalAlpha = (gr / 100) * 0.55;
+    g.fillStyle = pat;
+    g.fillRect(0, 0, W, H);
+  }
   g.restore();
 }
 
@@ -3508,6 +3630,14 @@ function closeExport() {
   $('exportPop').hidden = true;
   $('exportBtn').setAttribute('aria-expanded', 'false');
 }
+// 필름 분위기: 누르면 아래 값들을 그 느낌으로 맞추고, 이어서 슬라이더로 고친다
+$('retro').addEventListener('click', (e) => {
+  const b = e.target.closest('button');
+  if (!b) return;
+  setSeg('retro', b.dataset.v);
+  for (const id of RETRO_IDS) $(id).value = RETRO[b.dataset.v][id];
+  saveSettings();
+});
 $('rangeOn').addEventListener('change', syncRange);
 for (const id of ['rangeA', 'rangeB']) $(id).addEventListener('change', updateInfo);
 $('rangeFromNow').addEventListener('click', () => { $('rangeA').value = fmtTenth(songOffset() + state.t); updateInfo(); });
