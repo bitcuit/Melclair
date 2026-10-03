@@ -2245,6 +2245,7 @@ function tick(now) {
   drawWave();
   sceneTick();
   markNowLine();
+  stageWash(now);
   $('seek').value = Math.min(state.t, T);
   $('time').textContent = `${fmt(Math.min(state.t, T))} / ${fmt(T)}`;
   requestAnimationFrame(tick);
@@ -2255,6 +2256,25 @@ function setPlaying(v) {
   $('play').textContent = v ? '❚❚' : '▶';
   $('play').setAttribute('aria-label', v ? '일시정지' : '재생');
   if (v) restartAudio(); else stopAudio();
+}
+
+// 무대 배경이 지금 그림의 밝은 색으로 은은하게 물든다(편집 화면만, 저장과는 무관)
+let washAt = 0, washKey = '';
+function stageWash(now) {
+  document.body.classList.toggle('playing', state.playing && !state.busy);
+  if (now - washAt < 300) return;
+  washAt = now;
+  const it = imageAt(state.t).a;
+  const pal = it ? paletteOf(it) : null;
+  const key = pal ? pal.join() : '';
+  if (key === washKey) return;
+  washKey = key;
+  const wrap = document.querySelector('.canvas-wrap');
+  if (!pal) { for (const k of ['--amb1', '--amb2', '--amb3']) wrap.style.removeProperty(k); return; }
+  const c = (rgb) => `rgb(${rgb.join(',')})`;
+  wrap.style.setProperty('--amb1', c(pal[0]));
+  wrap.style.setProperty('--amb2', c(pal[2 % pal.length]));
+  wrap.style.setProperty('--amb3', c(pal[4 % pal.length]));
 }
 
 // 가사 카드에서 지금 나오는 줄을 표시
@@ -3120,7 +3140,7 @@ function drawGuides() {
     ctx.strokeStyle = 'rgba(255,255,255,0.45)';
     ctx.strokeRect(m, m, W - m * 2, H - m * 2);
   }
-  ctx.strokeStyle = tgt.st === selSticker ? '#2f6bff' : 'rgba(255,255,255,0.9)';
+  ctx.strokeStyle = tgt.st === selSticker ? '#a593ff' : 'rgba(255,255,255,0.9)';
   if (tgt.st === selSticker) ctx.setLineDash([]);
   const st = tgt.st, { w, h } = stickerSize(st, W);
   ctx.translate(st.x * W, st.y * H);

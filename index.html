@@ -10,26 +10,22 @@
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/galmuri/dist/galmuri.css">
 <style>
+  /* 불 꺼진 감상실: 미리보기가 이 방의 유일한 빛 */
   :root {
-    --bg: #f2f1ee;
-    --panel: #ffffff;
-    --line: #e4e2dd;
-    --line-2: #d6d3cd;
-    --text: #1d1c1a;
-    --dim: #7a7771;
-    --faint: #a8a59f;
-    --accent: #1d1c1a;
-    --accent-text: #ffffff;
-    --soft: #f0eeea;
-    --stage: #e9e7e3;
-    --sel: #2f6bff;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #141413; --panel: #1c1c1b; --line: #2e2d2b; --line-2: #3a3936; --text: #eceae5;
-      --dim: #94918a; --faint: #6c6a65; --accent: #eceae5; --accent-text: #161615; --soft: #262624;
-      --stage: #111110; --sel: #6b95ff;
-    }
+    color-scheme: dark;
+    --bg: #1d1a22;        /* 입력 칸 */
+    --panel: #16141b;     /* 패널 */
+    --line: #2b2732;
+    --line-2: #3d3746;
+    --text: #ece8f1;
+    --dim: #8f899a;
+    --faint: #625c6c;
+    --accent: #f1e6d2;    /* 켜진 조명: 내보내기·재생 */
+    --accent-text: #16141b;
+    --soft: #221f28;
+    --raise: #2f2a37;
+    --stage: #0c0b0f;
+    --sel: #a593ff;       /* 고른 것·지금 위치 */
   }
   * { box-sizing: border-box; }
   html, body { height: 100%; margin: 0; }
@@ -291,6 +287,70 @@
   .pick[aria-pressed=true] .mark { background: var(--sel); border-color: var(--sel); }
   .pick .cap { font-size: 12px; color: var(--dim); margin-top: 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+
+  /* ---------- 감상실 테마 ---------- */
+  @property --amb1 { syntax: '<color>'; inherits: true; initial-value: #2a2238; }
+  @property --amb2 { syntax: '<color>'; inherits: true; initial-value: #1b2a34; }
+  @property --amb3 { syntax: '<color>'; inherits: true; initial-value: #34211f; }
+  * { scrollbar-width: thin; scrollbar-color: var(--line-2) transparent; }
+  :focus-visible { outline: 2px solid var(--sel); outline-offset: 2px; }
+  ::selection { background: color-mix(in srgb, var(--sel) 40%, transparent); }
+
+  .brand { display: flex; align-items: center; gap: 10px; font-family: "Hahmlet", "Pretendard", serif; font-weight: 600; font-size: 18px; letter-spacing: -0.02em; }
+  /* 로고 옆 작은 디스크: 재생 중에만 돈다 */
+  .disc {
+    width: 20px; height: 20px; border-radius: 50%; flex: none;
+    background:
+      radial-gradient(circle, var(--panel) 0 2px, #d9d2e6 2.6px 3.6px, transparent 4.2px),
+      conic-gradient(from 20deg, #2f2a37, #6c5c8c, #2f2a37 40%, #a593ff 55%, #2f2a37 70%, #4a3f5c);
+    animation: spin 2.2s linear infinite; animation-play-state: paused;
+  }
+  body.playing .disc { animation-play-state: running; }
+  @keyframes spin { to { transform: rotate(1turn); } }
+  @media (prefers-reduced-motion: reduce) { .disc { animation: none; } }
+
+  .pane h2 { font-family: "Hahmlet", "Pretendard", serif; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+  .pane > .group ~ .group, .pane > .group ~ .sel-bar ~ .group { padding-top: 18px; border-top: 1px solid var(--line); }
+  .gl { font-size: 10.5px; color: var(--faint); letter-spacing: .08em; }
+  .tab:hover { background: var(--soft); }
+  .tab[aria-selected=true] { background: color-mix(in srgb, var(--sel) 14%, transparent); color: var(--text); }
+  .tab[aria-selected=true] svg { stroke: var(--sel); }
+  .seg { background: var(--bg); }
+  .seg button[aria-pressed=true] { background: var(--raise); color: var(--text); box-shadow: none; }
+  input[type=text]:focus, input[type=number]:focus, textarea:focus, select:focus {
+    border-color: color-mix(in srgb, var(--sel) 70%, transparent); background: var(--bg);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--sel) 18%, transparent);
+  }
+  select option, select optgroup { background: var(--panel); }
+  .check input, .sel-bar input, .lrow input[type=checkbox], .st-ctrl input, input[type=range] { accent-color: var(--sel); }
+  #seek { accent-color: var(--accent); }
+  .btn { background: var(--soft); }
+  .btn:hover { background: var(--raise); }
+  .btn.primary:hover { opacity: 1; background: #fff6e6; }
+  .file-row, .ledit { background: var(--bg); }
+  .lcard, .st-row { background: color-mix(in srgb, var(--bg) 50%, transparent); }
+
+  /* 무대: 지금 그림 색이 은은하게 번진다 */
+  .canvas-wrap { transition: --amb1 1.4s ease, --amb2 1.4s ease, --amb3 1.4s ease; isolation: isolate; }
+  .canvas-wrap::before {
+    content: ''; position: absolute; inset: -10%; z-index: 0; pointer-events: none;
+    background:
+      radial-gradient(42% 46% at 50% 48%, color-mix(in srgb, var(--amb1) 50%, transparent), transparent 72%),
+      radial-gradient(38% 44% at 26% 70%, color-mix(in srgb, var(--amb2) 34%, transparent), transparent 72%),
+      radial-gradient(38% 44% at 76% 26%, color-mix(in srgb, var(--amb3) 34%, transparent), transparent 72%);
+    filter: blur(40px);
+  }
+  #stage { position: relative; z-index: 1; box-shadow: 0 28px 90px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.04); }
+  .eye, .canvas-hint { z-index: 2; }
+  .eye { background: rgba(236,232,241,.06); border-color: rgba(236,232,241,.12); color: var(--text); backdrop-filter: blur(8px); }
+  .eye:hover { background: rgba(236,232,241,.12); }
+  .canvas-hint { background: rgba(236,232,241,.12); backdrop-filter: blur(10px); }
+  .timeline { background: var(--panel); }
+  .wave { background: var(--bg); }
+  .pop { box-shadow: 0 18px 60px rgba(0,0,0,.55); }
+  .picker { background: var(--stage); }
+  .thumb, .tile { background: var(--bg); }
+
   @media (max-width: 900px) {
     body { grid-template-columns: 56px 1fr; grid-template-rows: 52px auto 1fr; grid-template-areas: "top top" "rail panel" "stage stage"; overflow: auto; }
     .brand { width: auto; }
@@ -302,7 +362,7 @@
 </head>
 <body>
 <header>
-  <div class="brand">Spincard</div>
+  <div class="brand"><span class="disc" aria-hidden="true"></span>Spincard</div>
   <div class="seg" id="mode">
     <button data-v="player" aria-pressed="true">음악 플레이어</button>
     <button data-v="cd" aria-pressed="false">CD 플레이어</button>
