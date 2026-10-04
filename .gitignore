@@ -8,3 +8,7 @@ Thumbs.db
 desktop.ini
 .DS_Store
 *.tmp
+
+# 배너 결과물(banner/banner.html로 다시 뽑는다)
+/banner.png
+/banner-16x9.png
