@@ -1,8 +1,8 @@
 {
-  "at": "2026-10-04 21:10",
+  "at": "2026-10-04 21:30",
   "by": "claude-code",
-  "doing": "배너 두 장(4:3·16:9) 만듦 — 세 모양 실제 화면 + 이름",
-  "where": "banner/banner.html → banner.png, banner-16x9.png",
+  "doing": "열자마자 자동 재생하던 것을 기본 멈춤으로 바꿈",
+  "where": "app.js state.playing, index.html #play",
   "state": "돌아감",
   "next": "배너 확인받고 README나 안내 페이지에 붙이기",
   "blocked": "",

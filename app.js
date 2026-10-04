@@ -28,7 +28,7 @@ const state = {
   bgMode: 'blur',
   images: [],        // { url, img, cache }
   audio: null,       // { name, buf, peaks, env, a, b }
-  playing: true,
+  playing: false,  // 열자마자 재생하지 않는다. 재생 버튼이나 Space로 시작
   t: 0,
   busy: false,       // 저장 중
   cancel: false,
