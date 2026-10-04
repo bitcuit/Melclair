@@ -2869,7 +2869,17 @@ function renderNotes() {
   box.innerHTML = '';
   $('selBar').hidden = !paras.length;
   $('lyricTools').hidden = !paras.length;
-  $('foldAll').textContent = paras.length && paras.every((pa) => lfold.has(pa[0].i)) ? '모두 펴기' : '모두 접기';
+  // 문단 모두 접기·펴기: 아이콘(안으로 모이는 화살표 = 접기, 밖으로 퍼지는 화살표 = 펴기)
+  const allFolded = paras.length && paras.every((pa) => lfold.has(pa[0].i));
+  const fl = allFolded ? '문단 모두 펴기' : '문단 모두 접기';
+  $('foldAll').innerHTML = allFolded
+    ? '<svg viewBox="0 0 24 24"><path d="M7 9l5-5 5 5M7 15l5 5 5-5"/></svg>'
+    : '<svg viewBox="0 0 24 24"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></svg>';
+  $('foldAll').setAttribute('aria-label', fl);
+  $('foldAll').title = fl;
+  // 카드 전체 접기 머리줄
+  $('cardsToggle').hidden = !paras.length;
+  $('cardsCount').textContent = paras.length ? `${rows.filter((r) => r.text).length}줄` : '';
   const match = (r) => {
     if (!q) return true;
     const n = notes[r.text] || {};
@@ -3789,6 +3799,12 @@ $('selAll').addEventListener('change', () => {
 });
 $('selKeep').addEventListener('click', () => editSelected(true));
 $('lyricSearch').addEventListener('input', renderNotes);
+// 카드 전체 접기: 검색·선택 막대·카드를 통째로
+$('cardsToggle').addEventListener('click', () => {
+  const open = $('cardsToggle').getAttribute('aria-expanded') === 'true';
+  $('cardsToggle').setAttribute('aria-expanded', String(!open));
+  $('cardsBody').hidden = open;
+});
 $('foldAll').addEventListener('click', () => {
   const paras = rawParagraphs(rawRows());
   const all = paras.every((pa) => lfold.has(pa[0].i));

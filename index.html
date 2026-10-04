@@ -154,7 +154,8 @@
   /* 노래 */
   .file-row { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--soft); border-radius: 8px; }
   .file-row span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .x { border: 0; background: none; color: var(--dim); cursor: pointer; font-size: 15px; padding: 0 4px; line-height: 1; }
+  .x { border: 0; background: none; color: var(--dim); cursor: pointer; font-size: 15px; padding: 0; line-height: 1; width: 24px; height: 24px; flex: none; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; }
+  .x:hover { background: var(--soft); }
   .x:hover { color: var(--text); }
 
   .avatar-drop {
@@ -178,6 +179,21 @@
   .sel-bar input, .lrow input[type=checkbox] { accent-color: var(--text); width: 15px; height: 15px; margin: 0 2px; flex: none; }
   #selCount { font-size: 12px; color: var(--dim); }
   .lcards { display: flex; flex-direction: column; gap: 10px; }
+  .cards-body { display: flex; flex-direction: column; gap: 22px; }
+  .cards-body[hidden] { display: none; }
+  .lsec-head {
+    display: flex; align-items: center; gap: 8px; width: 100%; border: 0; background: none; color: var(--dim);
+    padding: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 600; text-align: left;
+  }
+  .lsec-head[hidden] { display: none; }
+  .lsec-head:hover { color: var(--text); }
+  .lsec-head[aria-expanded=false] .chev { transform: rotate(-90deg); }
+  .icon-btn {
+    width: 34px; height: 34px; flex: none; border-radius: 8px; border: 1px solid var(--line); background: var(--soft);
+    color: var(--text); cursor: pointer; display: flex; align-items: center; justify-content: center; padding: 0;
+  }
+  .icon-btn:hover { background: var(--raise); }
+  .icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   input[type=search] { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; outline: none; color: inherit; font: inherit; }
   .lhead {
     width: 100%; display: grid; grid-template-columns: 14px 36px 1fr auto; gap: 8px; align-items: center;
@@ -236,7 +252,8 @@
   .st-row.sel { border-color: var(--sel); box-shadow: 0 0 0 1px var(--sel); }
   .st-row img { width: 44px; height: 44px; object-fit: contain; background: var(--soft); border-radius: 6px; grid-row: span 3; align-self: start; }
   .st-row select { padding: 5px 8px; }
-  .st-x { border: 0; background: none; color: var(--dim); cursor: pointer; font-size: 15px; padding: 0 4px; }
+  .st-x { border: 0; background: none; color: var(--dim); cursor: pointer; font-size: 15px; padding: 0; line-height: 1; width: 24px; height: 24px; border-radius: 6px; display: inline-flex; align-items: center; justify-content: center; }
+  .st-x:hover { background: var(--soft); }
   .st-ctrl { grid-column: 2 / -1; display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--dim); }
   .st-ctrl input { flex: 1; accent-color: var(--text); }
 
@@ -397,7 +414,7 @@
   .btn.danger:hover { background: #c94440; }
   .help-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
   .help-head h2 { margin: 0; font-family: "Hahmlet", "Noto Sans KR", serif; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
-  .help-head .x { font-size: 20px; }
+  .help-head .x { font-size: 20px; width: 30px; height: 30px; }
   .steps { list-style: none; counter-reset: s; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
   .steps li { counter-increment: s; display: grid; grid-template-columns: 26px 1fr; column-gap: 12px; row-gap: 2px; }
   .steps li::before {
@@ -599,9 +616,13 @@
       <textarea id="lyricInput" class="paste" rows="2" placeholder="가사 붙여넣기 · 한 줄에 한 소절"></textarea>
       <textarea id="lyrics" placeholder="한 줄에 한 소절" hidden></textarea>
     </div>
+    <button class="lsec-head" id="cardsToggle" aria-expanded="true" hidden>
+      <span class="chev">▾</span><span>가사 카드</span><span class="lh-count" id="cardsCount"></span>
+    </button>
+    <div class="cards-body" id="cardsBody">
     <div class="row" id="lyricTools" hidden>
       <input type="search" id="lyricSearch" placeholder="가사 검색" aria-label="가사 검색">
-      <button class="btn ghost" id="foldAll">모두 접기</button>
+      <button class="icon-btn" id="foldAll" aria-label="문단 모두 접기" title="문단 모두 접기"></button>
     </div>
     <div class="sel-bar" id="selBar" hidden>
       <input type="checkbox" id="selAll" aria-label="모두 고르기">
@@ -620,6 +641,7 @@
       </select>
     </div>
     <div class="lcards" id="lyricCards"></div>
+    </div>
     <div class="group">
       <span class="gl">시간</span>
       <div class="row"><span class="lbl">박자 없는 줄 길이</span><input type="number" id="lineSec" min="0.5" step="0.5" value="3"><span class="unit">초</span></div>

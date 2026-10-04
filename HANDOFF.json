@@ -1,7 +1,7 @@
 {
-  "at": "2026-10-04 18:00",
+  "at": "2026-10-04 20:30",
   "by": "claude-code",
-  "doing": "디저트 폴더로 옮기고 README와 .gitignore 정리",
+  "doing": "가사 효과 그레인·치직과 줄마다 효과, 가사 카드 전체 접기, 버튼 글자 넘침·가운데 정렬 검사",
   "where": "app.js render() / drawLyrics() / drawArt() / saveMp4() / openPicker()",
   "state": "돌아감",
   "next": "깃허브 페이지에 올려 실제 주소에서 GIF·MP4 저장과 가사 찾기 확인",
