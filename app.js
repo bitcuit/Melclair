@@ -3687,6 +3687,8 @@ function helpTab(v) {
   $('help').scrollTop = 0;
 }
 for (const b of $('helpTab').children) b.addEventListener('click', () => helpTab(b.dataset.v));
+// 닫으면 펼쳐 둔 자주 묻는 것도 접는다
+$('help').addEventListener('close', () => { for (const x of $('helpFaq').querySelectorAll('details')) x.open = false; });
 $('helpClose').addEventListener('click', () => $('help').close());
 // 창 바깥(어두운 막)을 누르면 닫는다
 $('help').addEventListener('click', (e) => {
