@@ -55,7 +55,7 @@ function settingsObj() {
   const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glow: state.glow, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans, imgMode: state.imgMode,
       bokeh: $('bokeh').checked, gMain: $('gMain').checked, gPron: $('gPron').checked, gTrans: $('gTrans').checked,
       align: state.align, nextLine: $('nextLine').checked, prevLine: $('prevLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked, ytDark: $('ytDark').checked, volApply: $('volApply').checked, fpsV2: true,
-      retro: state.retro, lyStyle: state.lyStyle, lyCustom: state.lyCustom, capPos: state.capPos, gapCalc: $('gapCalc').checked };
+      retro: state.retro, lyricQ: state.lyricQ || '', lyStyle: state.lyStyle, lyCustom: state.lyCustom, capPos: state.capPos, gapCalc: $('gapCalc').checked };
   for (const f of FIELDS) o[f] = $(f).value;
   return o;
 }
@@ -82,6 +82,7 @@ function loadSettings() {
     if (o.imgTrans) setSeg('imgTrans', o.imgTrans);
     if (o.lyStyle) Object.assign(state.lyStyle, o.lyStyle);
     if (o.retro) setSeg('retro', o.retro);
+    if (o.lyricQ) state.lyricQ = o.lyricQ;
     if (o.lyCustom != null) state.lyCustom = o.lyCustom;
     if (o.capPos) Object.assign(state.capPos, o.capPos);
     if (o.imgMode) setSeg('imgMode', o.imgMode);
@@ -825,6 +826,9 @@ async function findLyrics() {
   const artist = $('artist').value.trim();
   const msg = $('lyricMsg');
   if (!title) { msg.textContent = '제목을 먼저 넣어 주세요'; $('title').focus(); return; }
+  // 마지막으로 가사를 받아 온 노래와 제목·가수가 다르면 새 노래로 보고 덮어쓴다
+  const qkey = (t, a) => `${t}|${a}`.toLowerCase().replace(/\s+/g, ' ').trim();
+  const newSong = !!state.lyricQ && state.lyricQ !== qkey(title, artist);
   msg.textContent = '찾는 중';
   try {
     const q = new URLSearchParams({ track_name: title });
@@ -844,24 +848,34 @@ async function findLyrics() {
     const ko = (x) => (/[가-힣]/.test(x.syncedLyrics || x.plainLyrics || '') ? 1 : 0);
     const wantKo = list.some(ko);
     const synced = list.filter((x) => x.syncedLyrics).sort((x, y) => (wantKo ? ko(y) - ko(x) : 0) || near(x) - near(y));
-    const mine = myLines();
+    const mine = newSong ? { texts: [], breaks: new Set() } : myLines();
+    // 새 노래로 덮어쓸 때는 예전 줄에 달아 둔 발음·번역·효과도 지운다(새 가사에 같은 줄이 있으면 남김)
+    const replaceWith = (text) => {
+      $('lyrics').value = text;
+      if (!newSong) return;
+      const keep = new Set(rawRows().map((r) => r.text).filter(Boolean));
+      for (const k of Object.keys(notes)) if (!keep.has(k)) delete notes[k];
+      lsel.clear();
+      lopen = -1;
+    };
     const warnLen = synced.length && D && near(synced[0]) > 3 ? ' — 노래 파일과 길이가 달라 박자가 어긋날 수 있습니다' : '';
     if (synced.length && mine.texts.length) {
       msg.textContent = stampMine(mine, synced[0].syncedLyrics) + warnLen;
     } else if (synced.length) {
-      $('lyrics').value = synced[0].syncedLyrics;
+      replaceWith(synced[0].syncedLyrics);
       msg.textContent = `${synced[0].artistName} · ${synced[0].trackName}` + warnLen;
     } else if (mine.texts.length) {
       msg.textContent = list.length ? '박자 있는 가사가 없습니다. 박자 찍기로 맞춰 주세요' : '가사를 못 찾았습니다. 제목·가수 철자를 확인해 주세요';
     } else {
       const plain = list.find((x) => x.plainLyrics);
       if (plain) {
-        $('lyrics').value = plain.plainLyrics;
+        replaceWith(plain.plainLyrics);
         msg.textContent = '박자 없는 가사만 있습니다. 박자 찍기로 맞춰 주세요';
       } else {
         msg.textContent = '가사를 못 찾았습니다. 제목·가수 철자를 확인해 주세요';
       }
     }
+    if (list.length) state.lyricQ = qkey($('title').value.trim(), $('artist').value.trim());
     updateInfo();
     saveSettings();
     renderNotes();
