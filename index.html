@@ -399,6 +399,7 @@
   }
   dialog.help::backdrop { background: rgba(8,7,10,.55); backdrop-filter: blur(3px); }
   dialog.confirm { width: min(380px, calc(100vw - 32px)); }
+  #fontDlg { width: min(460px, calc(100vw - 32px)); }
   dialog.confirm h2 { margin: 0 0 8px; font-family: "Hahmlet", "Noto Sans KR", serif; font-size: 20px; font-weight: 600; }
   dialog.confirm p { margin: 0 0 18px; color: var(--dim); line-height: 1.6; }
   .confirm-btns { justify-content: flex-end; }
@@ -423,7 +424,8 @@
   .font-list:empty { display: none; }
   .font-item { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: var(--bg); font-size: 13px; }
   .font-item span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .canvas-hint { background: rgba(236,232,241,.12); backdrop-filter: blur(10px); }
+  /* 안내 뱃지: 어떤 무대·모양에서도 뱃지로 보이게 짙은 바탕 + 가는 테두리 */
+  .canvas-hint { background: rgba(22,20,27,.88); border: 1px solid rgba(236,232,241,.16); color: #f1ecf4; backdrop-filter: blur(10px); box-shadow: 0 6px 20px rgba(0,0,0,.35); }
   .timeline { background: var(--panel); }
   .wave { background: var(--bg); }
   .pop { box-shadow: 0 18px 60px rgba(0,0,0,.55); }
@@ -523,6 +525,11 @@
       </div>
       <div class="row" id="secRow"><span class="lbl">기본 길이</span><input type="number" id="imgSec" min="0.5" step="0.5" value="3"><span class="unit">초</span></div>
       <div class="row" id="refitRow" hidden><span class="lbl"></span><button class="btn" id="refit" disabled>초 다시 나누기</button></div>
+    </div>
+    <div class="group" id="dimGroup">
+      <span class="gl">제목 뒤 딤</span>
+      <div class="row"><span class="lbl">길이</span><input type="range" id="dimLen" min="10" max="100" step="1" value="30" style="flex:1"></div>
+      <div class="row"><span class="lbl">진하기</span><input type="range" id="dimAlpha" min="0" max="100" step="1" value="62" style="flex:1"></div>
     </div>
     <div class="group">
       <span class="gl">위치</span>
@@ -654,18 +661,14 @@
       <select id="font" style="width:180px;flex:none">
         <option value="Noto Sans KR">본고딕</option>
         <option value="Noto Serif KR">본명조</option>
+        <option value="__add">+ 웹폰트 추가…</option>
       </select></div>
       <div class="row"><span class="lbl">가사</span>
       <select id="lyFont" style="width:180px;flex:none"><option value="">화면 글자와 같게</option>
         <option value="Noto Sans KR">본고딕</option>
         <option value="Noto Serif KR">본명조</option>
+        <option value="__add">+ 웹폰트 추가…</option>
       </select></div>
-      <div class="row">
-        <input type="text" id="webFontUrl" placeholder="https://fonts.googleapis.com/css2?family=…" aria-label="웹폰트 주소">
-        <button class="btn" id="webFontAdd">추가</button>
-      </div>
-      <div class="msg" id="webFontMsg"></div>
-      <div class="font-list" id="webFontList"></div>
     </div>
     <div class="group">
       <span class="gl">정렬</span>
@@ -791,6 +794,20 @@
     <label class="drop" id="stickerDrop">PNG · JPG · GIF 넣기<input type="file" id="stickerFile" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden></label>
   </div>
 </aside>
+
+<dialog class="help confirm" id="fontDlg" aria-labelledby="fontTitle">
+  <div class="help-head">
+    <h2 id="fontTitle">웹폰트 추가</h2>
+    <button class="x" id="fontClose" aria-label="닫기">×</button>
+  </div>
+  <p>구글 폰트 주소나 글꼴 파일(woff2 · ttf · otf) 주소를 넣어 주세요. 구글 폰트의 &lt;link&gt; 코드를 그대로 붙여넣어도 돼요.</p>
+  <div class="row">
+    <input type="text" id="webFontUrl" placeholder="https://fonts.googleapis.com/css2?family=…" aria-label="웹폰트 주소">
+    <button class="btn primary" id="webFontAdd">추가</button>
+  </div>
+  <div class="msg" id="webFontMsg" style="margin-top:8px"></div>
+  <div class="font-list" id="webFontList" style="margin-top:12px"></div>
+</dialog>
 
 <dialog class="help confirm" id="resetDlg" aria-labelledby="resetTitle">
   <h2 id="resetTitle">새로 시작할까요?</h2>

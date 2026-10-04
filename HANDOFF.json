@@ -1,7 +1,7 @@
 {
-  "at": "2026-10-04 21:00",
+  "at": "2026-10-04 22:00",
   "by": "claude-code",
-  "doing": "노래를 넣으면 15초만 반복되던 것을 곡 전체가 나오게 고침",
+  "doing": "제목 뒤 딤 길이·진하기, 글꼴 목록의 웹폰트 추가 팝업, 안내 뱃지 바탕",
   "where": "app.js render() / drawLyrics() / drawArt() / saveMp4() / openPicker()",
   "state": "돌아감",
   "next": "깃허브 페이지에 올려 실제 주소에서 GIF·MP4 저장과 가사 찾기 확인",

@@ -50,7 +50,7 @@ const state = {
 let still = null;
 
 // ---------- 설정 저장 (텍스트만) ----------
-const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font', 'glowAmt', 'chName', 'subs', 'likes', 'vTitle', 'glowSpread', 'discAngle', 'fxBright', 'fxContrast', 'fxSat', 'fxTemp', 'fxVignette', 'fxGrain', 'fxShake', 'lyFont', 'lyColor', 'pronColor', 'transColor', 'fxColor'];
+const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font', 'glowAmt', 'chName', 'subs', 'likes', 'vTitle', 'glowSpread', 'discAngle', 'dimLen', 'dimAlpha', 'fxBright', 'fxContrast', 'fxSat', 'fxTemp', 'fxVignette', 'fxGrain', 'fxShake', 'lyFont', 'lyColor', 'pronColor', 'transColor', 'fxColor'];
 function settingsObj() {
   const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glow: state.glow, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans, imgMode: state.imgMode,
       bokeh: $('bokeh').checked, gMain: $('gMain').checked, gPron: $('gPron').checked, gTrans: $('gTrans').checked,
@@ -937,7 +937,7 @@ document.addEventListener('keydown', (e) => {
   }
   const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement && document.activeElement.tagName)
     && !['checkbox', 'range', 'color'].includes(document.activeElement.type);
-  if (typing || state.busy || $('help').open || $('resetDlg').open) return;
+  if (typing || state.busy || $('help').open || $('resetDlg').open || $('fontDlg').open) return;
   if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); }
   else if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
     if (!scenes.length) return;
@@ -1735,10 +1735,13 @@ function render(g, W, t) {
     // 제목이 아트 위에 있으면 그 뒤만 아래로 갈수록 어둡게 깐다
     if (onArt) {
       // 아래 끝은 이미지 아래 끝까지 닿게 해서 틈이 안 보이게
-      const top = tm.rect.y - 40 * u, bot = y + s;
+      // 길이는 그림 높이 대비, 진하기는 맨 아래 어둡기(이미지 탭에서 조절)
+      const len = (parseFloat($('dimLen').value) || 30) / 100;
+      const da = (parseFloat($('dimAlpha').value) ?? 62) / 100;
+      const bot = y + s, top = bot - s * len;
       const grad = g.createLinearGradient(0, top, 0, bot);
       grad.addColorStop(0, 'rgba(0,0,0,0)');
-      grad.addColorStop(1, 'rgba(0,0,0,0.62)');
+      grad.addColorStop(1, `rgba(0,0,0,${isNaN(da) ? 0.62 : da})`);
       g.fillStyle = grad;
       g.fillRect(x, top, s, bot - top);
     }
@@ -3261,6 +3264,7 @@ function syncFx() {
   // 동영상은 페이지 색만 고르고, 이미지 흐리게·단색 배경은 쓰지 않는다
   $('bgRow').hidden = state.mode === 'yt';
   $('ytDarkRow').hidden = state.mode !== 'yt';
+  $('dimGroup').hidden = state.mode !== 'player';
   // 동영상은 제목·가수 정렬을 쓰지 않는다
   $('alignTitleRow').hidden = state.mode === 'yt';
   $('glowSpreadRow').hidden = state.glow === 'off';
@@ -3616,7 +3620,7 @@ function saveWebFonts() { try { localStorage.setItem(WEBFONT_KEY, JSON.stringify
 function addFontOption(name) {
   for (const sel of [$('font'), $('lyFont')]) {
     if ([...sel.options].some((o) => o.value === name)) continue;
-    sel.add(new Option(name, name));
+    sel.add(new Option(name, name), [...sel.options].find((o) => o.value === '__add'));
   }
 }
 function removeFontOption(name) {
@@ -3701,7 +3705,14 @@ async function addWebFont() {
     saveWebFonts();
     renderWebFonts();
     $('webFontUrl').value = '';
-    msg.textContent = `${families.join(', ')} 추가됨`;
+    msg.textContent = '';
+    if (fontTarget) {
+      fontTarget.value = families[0];
+      fontTarget.dataset.prev = families[0];
+      fontTarget.dispatchEvent(new Event('change'));
+      saveSettings();
+    }
+    $('fontDlg').close();
   } catch (e) {
     msg.textContent = '글꼴을 불러오지 못했습니다. 구글 폰트 주소나 글꼴 파일(woff2·ttf·otf) 주소인지 확인해 주세요';
   }
@@ -3715,6 +3726,25 @@ function restoreWebFonts() {
   renderWebFonts();
 }
 $('webFontAdd').addEventListener('click', addWebFont);
+// 글꼴 목록에서 "+ 웹폰트 추가…"를 고르면 원래 글꼴로 되돌려 두고 링크 넣는 창을 연다
+let fontTarget = null;
+for (const sel of [$('font'), $('lyFont')]) {
+  sel.dataset.prev = sel.value;
+  sel.addEventListener('focus', () => { if (sel.value !== '__add') sel.dataset.prev = sel.value; });
+  // 다른 처리(설정 저장·글꼴 적용)보다 먼저 가로챈다
+  const grab = (e) => {
+    if (sel.value !== '__add') { sel.dataset.prev = sel.value; return; }
+    e.stopImmediatePropagation();
+    sel.value = sel.dataset.prev || (sel === $('lyFont') ? '' : 'Noto Sans KR');
+    fontTarget = sel;
+    $('webFontMsg').textContent = '';
+    $('fontDlg').showModal();
+    $('webFontUrl').focus();
+  };
+  sel.addEventListener('input', grab, true);
+  sel.addEventListener('change', grab, true);
+}
+$('fontClose').addEventListener('click', () => $('fontDlg').close());
 $('webFontUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') addWebFont(); });
 
 // ---------- 탭 ----------
