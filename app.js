@@ -909,15 +909,16 @@ function stampMine(mine, lrc) {
   $('lyrics').value = mine.texts.map((s, i) => (mine.breaks.has(i) ? '\n' : '') + (hits[i] >= 0 ? fmtLrc(src[hits[i]].start) + ' ' : '') + s).join('\n');
 
   const found = hits.filter((h) => h >= 0);
-  // 적어 둔 줄이 노래 가사의 일부일 때만 그 부분으로 구간을 좁힌다.
-  // 전체 가사를 적어 둔 경우까지 좁히면 전주·끝부분(아웃트로)이 잘려서 곡 전체를 그대로 둔다
-  const lyricRows = src.filter((x) => x.key).length;
-  const partial = found.length < lyricRows * 0.6;
-  if (found.length && state.audio && partial) {
-    const first = src[found[0]].start;
-    const lastIdx = found[found.length - 1];
-    const end = lastIdx + 1 < src.length ? src[lastIdx + 1].start : src[lastIdx].start + num('lineSec', 3);
-    setSegment(first - 0.3, end, true);
+  // 구간은 적어 둔 줄에 맞춰 잡는다. 다만 노래의 첫 가사가 들어 있으면 곡 처음부터(전주 포함),
+  // 마지막 가사가 들어 있으면 곡 끝까지(끝부분 포함) 잡는다
+  if (found.length && state.audio) {
+    const lyricIdx = src.map((x, i) => (x.key ? i : -1)).filter((i) => i >= 0);
+    const firstIdx = found[0], lastIdx = found[found.length - 1];
+    const start = firstIdx === lyricIdx[0] ? 0 : src[firstIdx].start - 0.3;
+    const end = lastIdx === lyricIdx[lyricIdx.length - 1]
+      ? state.audio.buf.duration
+      : (lastIdx + 1 < src.length ? src[lastIdx + 1].start : src[lastIdx].start + num('lineSec', 3));
+    setSegment(start, end, true);
   }
   const miss = mine.texts.filter((_, i) => hits[i] < 0);
   if (!miss.length) return `${mine.texts.length}줄 모두 시간을 붙였습니다`;
