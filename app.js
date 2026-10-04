@@ -90,6 +90,11 @@ function loadSettings() {
       else if (v) Object.assign(state.align[m], v);
     }
     if (o.notes) Object.assign(notes, o.notes);
+    // 예전 "이 줄에만 글리치"는 그 줄의 효과를 글리치로 옮긴다.
+    // 예전엔 전체 효과가 글리치여도 체크한 줄에만 났으니, 그 경우 전체는 페이드로
+    let hadMark = false;
+    for (const k in notes) if (notes[k].gl) { hadMark = true; notes[k].fx = 'glitch'; delete notes[k].gl; }
+    if (hadMark && state.fx === 'glitch') setSeg('fx', 'fade');
   } catch (e) {}
 }
 
@@ -172,7 +177,7 @@ function parseLyrics() {
 const notes = {};
 function noteOf(text) {
   const n = notes[text];
-  return { pron: (n && n.p) || '', trans: (n && n.tr) || '', gl: !!(n && n.gl) };
+  return { pron: (n && n.p) || '', trans: (n && n.tr) || '', lfx: (n && n.fx) || '' };
 }
 
 // 미리보기·저장의 t(0~길이)를 노래 시각으로 바꿀 때 더하는 값
@@ -203,7 +208,9 @@ function lyricAt(t) {
     if (at >= l.start && at < l.end) {
       const dur = l.end - l.start;
       const fade = Math.min(FADE, dur / 3);
-      const alpha = state.fx === 'none' ? 1 : Math.min(1, (at - l.start) / fade, (l.end - at) / fade);
+      const fxm = lineFx(l.text);
+      // 없음·치직은 바로 나타나고(치직은 잡음이 걷히며), 나머지는 서서히
+      const alpha = fxm === 'none' || fxm === 'static' ? 1 : Math.min(1, (at - l.start) / fade, (l.end - at) / fade);
       const nx = lyr.lines.slice(i + 1).find((x) => x.text);
       const pv = lyr.lines.slice(0, i).reverse().find((x) => x.text);
       return { text: l.text, alpha: Math.max(0, alpha), since: at - l.start, at, next: nx ? nx.text : '', prev: pv ? pv.text : '', ...noteOf(l.text) };
@@ -1246,15 +1253,20 @@ function hash(n) {
   return x - Math.floor(x);
 }
 
+// 줄에 고른 효과(없으면 전체 설정)
+function lineFx(text) {
+  const n = notes[text];
+  return (n && n.fx) || state.fx;
+}
+// 줄마다 효과를 글리치로 고른 줄이 있으면, 그 줄이 나오는 동안에만 이미지·스티커 글리치가 난다
 function anyMarked() {
-  for (const k in notes) if (notes[k].gl) return true;
+  for (const k in notes) if (notes[k].fx === 'glitch') return true;
   return false;
 }
-// 줄마다 설정에서 글리치를 체크한 줄이 있으면, 그 줄이 나오는 동안에만 글리치가 난다
 function glitchAllowed(t) {
   if (!anyMarked()) return true;
   const l = lyricAt(t);
-  return !!(l && l.text && notes[l.text] && notes[l.text].gl);
+  return !!(l && l.text && notes[l.text] && notes[l.text].fx === 'glitch');
 }
 // 가끔 튀는 글리치 세기(0~1). 박자 맞추기를 켜고 노래가 있으면 박자마다 튄다
 function glitchBurst(t, salt, prob = 0.08) {
@@ -1279,13 +1291,98 @@ function glitchBurst(t, salt, prob = 0.08) {
 const view = { frozen: false, hideFx: false };
 const fxStatic = () => !!still || view.frozen;
 
-function glitchOf(item, t) {
-  if (item.glitch != null) return item.glitch;
+// 가사 효과 세기(0~1). 글리치: 줄이 바뀔 때 세게 + 가끔 튐 / 그레인: 나타날 때 세게, 떠 있는 동안 잔잔하게 /
+// 치직: 나타날 때 잡음이 걷히며, 가끔 짧게. 멈춘 화면·이미지 저장은 고정 세기
+function fxStrength(kind, item, t) {
   if (view.hideFx) return 0;
-  if (anyMarked() && !item.gl) return 0;
-  if (view.frozen) return 0.35;
-  if (item.since < 0.45) return 1 - item.since / 0.45 * 0.7;
-  return glitchBurst(t, 0, 0.06);
+  if (fxStatic()) return kind === 'grain' ? 0.45 : 0.35;
+  if (kind === 'glitch') {
+    if (item.since < 0.45) return 1 - item.since / 0.45 * 0.7;
+    return glitchBurst(t, 0, 0.06);
+  }
+  if (kind === 'grain') return item.since < 0.6 ? 0.9 - item.since / 0.6 * 0.55 : 0.35;
+  if (kind === 'static') {
+    if (item.since < 0.55) return 1 - item.since / 0.55;
+    const k = Math.floor(item.at * 10);
+    return hash(k + 41) < 0.05 ? 0.5 : 0;
+  }
+  return 0;
+}
+
+// 글자를 gBase에 그려 둔다(글리치·그레인·치직이 같이 쓴다). 그린 칸 크기를 돌려준다
+function prepText(text, size, color, weight, fam, u) {
+  const font = `${weight} ${size}px ${fam}`;
+  const bc = gBase.getContext('2d');
+  bc.font = font;
+  const pad = Math.ceil(24 * u);
+  const w = Math.ceil(bc.measureText(text).width) + pad * 2;
+  const h = Math.ceil(size * 1.5);
+  if (gBase.width < w || gBase.height < h) { gBase.width = gTint.width = Math.max(gBase.width, w); gBase.height = gTint.height = Math.max(gBase.height, h); }
+  bc.globalCompositeOperation = 'source-over';
+  bc.globalAlpha = 1;
+  bc.clearRect(0, 0, gBase.width, gBase.height);
+  bc.font = font;
+  bc.textAlign = 'left';
+  bc.textBaseline = 'top';
+  bc.fillStyle = color;
+  bc.fillText(text, pad, size * 0.15);
+  return { w, h, bc };
+}
+// 필름 그레인: 글자에 잡티 구멍을 뚫어 오톨도톨하게, 살짝 깜빡인다
+const speckTiles = [];
+function speckTile(k) {
+  if (!speckTiles.length) {
+    for (let n = 0; n < 4; n++) {
+      const c = document.createElement('canvas');
+      c.width = c.height = 96;
+      const g = c.getContext('2d');
+      const d = g.createImageData(96, 96);
+      for (let i = 0; i < d.data.length; i += 4) d.data[i + 3] = hash(i * 0.71 + n * 331) < 0.5 ? 255 : 0;
+      g.putImageData(d, 0, 0);
+      speckTiles.push(c);
+    }
+  }
+  return speckTiles[k % speckTiles.length];
+}
+function drawGrainText(g, text, cx, y, size, color, alpha, s, u, seed, weight, fam) {
+  const { w, h, bc } = prepText(text, size, color, weight, fam, u);
+  const k = Math.floor(seed * 24);
+  const pat = bc.createPattern(speckTile(k), 'repeat');
+  pat.setTransform(new DOMMatrix([Math.max(1, u * 0.8), 0, 0, Math.max(1, u * 0.8), Math.floor(hash(k) * 96), Math.floor(hash(k + 5) * 96)]));
+  bc.globalCompositeOperation = 'destination-out';
+  bc.globalAlpha = Math.min(0.85, s);
+  bc.fillStyle = pat;
+  bc.fillRect(0, 0, w, h);
+  bc.globalCompositeOperation = 'source-over';
+  bc.globalAlpha = 1;
+  const flicker = 1 - s * 0.35 * hash(k * 1.7);
+  g.globalAlpha = alpha * flicker;
+  g.drawImage(gBase, 0, 0, w, h, cx - w / 2, y - size * 0.15, w, h);
+  g.globalAlpha = 1;
+}
+// 비디오 치직: 글자를 가는 띠로 흔들고, 몇 띠는 끊기고, 흰 잡음 줄이 지나간다
+function drawStaticText(g, text, cx, y, size, color, alpha, s, u, seed, weight, fam) {
+  const { w, h } = prepText(text, size, color, weight, fam, u);
+  const x0 = cx - w / 2, y0 = y - size * 0.15;
+  const band = Math.max(1, 2 * u);
+  const k = Math.floor(seed * 30);
+  g.globalAlpha = alpha;
+  for (let by = 0, i = 0; by < h; by += band, i++) {
+    const r = hash(k * 13 + i);
+    if (r < s * 0.22) continue;   // 끊긴 띠
+    const dx = r < s * 0.7 ? (hash(k * 7 + i * 3) - 0.5) * s * 16 * u : 0;
+    g.drawImage(gBase, 0, by, w, band, x0 + dx, y0 + by, w, band);
+  }
+  // 흰 잡음 줄
+  g.fillStyle = '#ffffff';
+  const lines = Math.round(2 + s * 4);
+  for (let i = 0; i < lines; i++) {
+    const ly = y0 + hash(k * 3 + i * 17) * h;
+    const lw = w * (0.3 + hash(k + i * 9) * 0.7);
+    g.globalAlpha = alpha * s * 0.55;
+    g.fillRect(x0 + hash(k * 5 + i) * (w - lw), ly, lw, Math.max(1, u * 0.8));
+  }
+  g.globalAlpha = 1;
 }
 
 // 가사 묶음(발음·본문·번역)을 구역 [y0, y1] 가운데에 맞춰 그린다. 넘치면 글씨를 줄인다
@@ -1297,7 +1394,6 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
     items = l && l.text ? [l] : [];
   }
   if (!items.length) return;
-  const glitch = state.fx === 'glitch';
   const align = opt.align || 'center';
   const style = opt.style || 'none';
   const fxc = $('fxColor').value;
@@ -1374,15 +1470,19 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
   }
   for (const L of layout) {
     const alpha = still ? 1 : L.it.alpha;
-    const gs = glitch ? glitchOf(L.it, t) : 0;
+    const kind = lineFx(L.it.text);
+    const gs = kind === 'glitch' || kind === 'grain' || kind === 'static' ? fxStrength(kind, L.it, t) : 0;
     // 글리치는 나타날 때 깜빡이며 들어온다
-    const a = gs > 0 && !fxStatic() && L.it.since < 0.3 ? (hash(Math.floor(L.it.at * 30)) < 0.35 ? 0.15 : 1) : alpha;
-    // 글리치 넣을 곳으로 고른 부분만 글리치로 그린다
+    const a = kind === 'glitch' && gs > 0 && !fxStatic() && L.it.since < 0.3 ? (hash(Math.floor(L.it.at * 30)) < 0.35 ? 0.15 : 1) : alpha;
+    // 효과 넣을 곳으로 고른 부분만 효과로 그린다
     const put = (text, size, weight, color, on) => {
       g.font = `${weight} ${size}px ${LFONT}`;
       if (on && gs > 0) {
         const tw = g.measureText(text).width;
-        drawGlitchText(g, text, align === 'left' ? cx + tw / 2 : align === 'right' ? cx - tw / 2 : cx, y, size, color, a, gs, u, L.it.at, weight, LFONT);
+        const ex = align === 'left' ? cx + tw / 2 : align === 'right' ? cx - tw / 2 : cx;
+        if (kind === 'grain') drawGrainText(g, text, ex, y, size, color, a, gs, u, L.it.at, weight, LFONT);
+        else if (kind === 'static') drawStaticText(g, text, ex, y, size, color, a, gs, u, L.it.at, weight, LFONT);
+        else drawGlitchText(g, text, ex, y, size, color, a, gs, u, L.it.at, weight, LFONT);
         g.textAlign = align;
         g.textBaseline = 'top';
       } else {
@@ -1436,19 +1536,7 @@ function drawLyrics(g, cx, y0, y1, maxW, u, fg, dim, t, opt = {}) {
 const gBase = document.createElement('canvas');
 const gTint = document.createElement('canvas');
 function drawGlitchText(g, text, cx, y, size, fg, alpha, s, u, seed, weight = 600, fam = FONT) {
-  const font = `${weight} ${size}px ${fam}`;
-  const bc = gBase.getContext('2d');
-  bc.font = font;
-  const pad = Math.ceil(24 * u);
-  const w = Math.ceil(bc.measureText(text).width) + pad * 2;
-  const h = Math.ceil(size * 1.5);
-  if (gBase.width < w || gBase.height < h) { gBase.width = gTint.width = Math.max(gBase.width, w); gBase.height = gTint.height = Math.max(gBase.height, h); }
-  bc.clearRect(0, 0, gBase.width, gBase.height);
-  bc.font = font;
-  bc.textAlign = 'left';
-  bc.textBaseline = 'top';
-  bc.fillStyle = fg;
-  bc.fillText(text, pad, size * 0.15);
+  const { w, h } = prepText(text, size, fg, weight, fam, u);
   glitchBlit(g, w, h, cx - w / 2, y - size * 0.15, alpha, s, u, seed, 6);
 }
 
@@ -2576,8 +2664,7 @@ function stillUnits() {
   const lyr = parseLyrics();
   const base = lyr.timed ? songBase(lyr) : 0;
   const lines = lyr.lines.filter((l) => l.text);
-  const marked = anyMarked();
-  const item = (l, i) => ({ text: l.text, ...noteOf(l.text), glitch: marked && !noteOf(l.text).gl ? 0 : 0.35, at: i + 1 });
+  const item = (l, i) => ({ text: l.text, ...noteOf(l.text), since: 1, at: i + 1 });
   if (!lines.length) return [{ label: '', t: state.t, items: [] }];
   if (state.unit === 'para') {
     const groups = [];
@@ -2767,7 +2854,7 @@ function rowClipTime(r) {
 function noteSet(text, key, val) {
   notes[text] = { ...(notes[text] || {}), [key]: val };
   const n = notes[text];
-  if (!n.p && !n.tr && !n.gl) delete notes[text];
+  if (!n.p && !n.tr && !n.fx) delete notes[text];
   saveSettings();
 }
 
@@ -2836,10 +2923,16 @@ function renderNotes() {
       } else tx.textContent = r.text;
       const badges = document.createElement('span');
       badges.className = 'lbadges';
-      for (const [k, label] of [['p', '발음'], ['tr', '번역'], ['gl', '글리치']]) {
+      for (const [k, label] of [['p', '발음'], ['tr', '번역']]) {
         if (!n[k]) continue;
         const b = document.createElement('i');
         b.textContent = label;
+        badges.append(b);
+      }
+      if (n.fx) {
+        const b = document.createElement('i');
+        b.className = 'fx';
+        b.textContent = FX_LABEL[n.fx];
         badges.append(b);
       }
       row.append(cb, tm, tx, badges);
@@ -2932,16 +3025,20 @@ function lineEditor(r) {
   const pron = mk(n.p, '발음', '발음', (v) => noteSet(r.text, 'p', v));
   const trans = mk(n.tr, '번역', '번역', (v) => noteSet(r.text, 'tr', v));
   [pron, trans].forEach((x) => x.addEventListener('change', renderNotes));
-  const gl = document.createElement('label');
-  gl.className = 'check';
-  const cb = document.createElement('input');
-  cb.type = 'checkbox';
-  cb.checked = !!n.gl;
-  cb.addEventListener('change', () => { noteSet(r.text, 'gl', cb.checked); renderNotes(); });
-  gl.append(cb, '이 줄에만 글리치');
-  ed.append(trow, text, pron, trans, gl);
+  // 이 줄 효과: 하나만. 기본은 효과 탭의 전체 설정을 따른다
+  const fxRow = document.createElement('div');
+  fxRow.className = 'seg lfx';
+  for (const [v, label] of [['', '기본'], ...Object.entries(FX_LABEL)]) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.setAttribute('aria-pressed', String((n.fx || '') === v));
+    b.addEventListener('click', () => { noteSet(r.text, 'fx', v); renderNotes(); });
+    fxRow.append(b);
+  }
+  ed.append(trow, text, pron, trans, fxRow);
   return ed;
 }
+const FX_LABEL = { none: '없음', fade: '페이드', glitch: '글리치', grain: '그레인', static: '치직' };
 
 function syncSelBar() {
   const rows = rawRows().filter((r) => r.text);
@@ -2949,10 +3046,7 @@ function syncSelBar() {
   $('selAll').checked = n > 0 && n === rows.length;
   $('selAll').indeterminate = n > 0 && n < rows.length;
   $('selCount').textContent = n ? `${n}줄` : '';
-  for (const id of ['selKeep', 'selDel', 'selGlitch']) $(id).disabled = !n;
-  const texts = rows.filter((r) => lsel.has(r.i)).map((r) => r.text);
-  const allOn = texts.length && texts.every((t) => notes[t] && notes[t].gl);
-  $('selGlitch').textContent = allOn ? '글리치 끄기' : '글리치 켜기';
+  for (const id of ['selKeep', 'selDel', 'selFx']) $(id).disabled = !n;
 }
 // 고른 줄만 남기거나 지운다. 문단 나눔은 남은 줄 사이에서 지킨다
 function editSelected(keep) {
@@ -3174,7 +3268,7 @@ function syncImgMode() {
 }
 // 가사 효과가 글리치일 때만 넣을 곳을 고르게 한다
 function syncFx() {
-  $('gTargets').hidden = state.fx !== 'glitch';
+  $('gTargets').hidden = !['glitch', 'grain', 'static'].includes(state.fx) && !Object.values(notes).some((x) => ['glitch', 'grain', 'static'].includes(x.fx));
   $('cdGroup').hidden = state.mode !== 'cd';
   // 동영상은 페이지 색만 고르고, 이미지 흐리게·단색 배경은 쓰지 않는다
   $('bgRow').hidden = state.mode === 'yt';
@@ -3716,10 +3810,12 @@ $('lyrics').addEventListener('change', () => {
   setLyricsRaw(absorbNotes($('lyrics').value, false).text);
 });
 $('selDel').addEventListener('click', () => editSelected(false));
-$('selGlitch').addEventListener('click', () => {
-  const texts = rawRows().filter((r) => r.text && lsel.has(r.i)).map((r) => r.text);
-  const allOn = texts.every((t) => notes[t] && notes[t].gl);
-  for (const t of texts) noteSet(t, 'gl', !allOn);
+// 고른 줄의 효과를 한꺼번에
+$('selFx').addEventListener('change', () => {
+  const v = $('selFx').value;
+  if (v === '-') return;
+  for (const r of rawRows()) if (r.text && lsel.has(r.i)) noteSet(r.text, 'fx', v);
+  $('selFx').value = '-';
   renderNotes();
 });
 // 텍스트로 편집 ↔ 카드로 보기
