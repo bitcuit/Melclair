@@ -909,7 +909,11 @@ function stampMine(mine, lrc) {
   $('lyrics').value = mine.texts.map((s, i) => (mine.breaks.has(i) ? '\n' : '') + (hits[i] >= 0 ? fmtLrc(src[hits[i]].start) + ' ' : '') + s).join('\n');
 
   const found = hits.filter((h) => h >= 0);
-  if (found.length && state.audio) {
+  // 적어 둔 줄이 노래 가사의 일부일 때만 그 부분으로 구간을 좁힌다.
+  // 전체 가사를 적어 둔 경우까지 좁히면 전주·끝부분(아웃트로)이 잘려서 곡 전체를 그대로 둔다
+  const lyricRows = src.filter((x) => x.key).length;
+  const partial = found.length < lyricRows * 0.6;
+  if (found.length && state.audio && partial) {
     const first = src[found[0]].start;
     const lastIdx = found[found.length - 1];
     const end = lastIdx + 1 < src.length ? src[lastIdx + 1].start : src[lastIdx].start + num('lineSec', 3);
