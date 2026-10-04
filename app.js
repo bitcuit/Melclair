@@ -9,12 +9,13 @@ const ENV_RATE = 50;        // 소리 크기를 1초에 몇 번 재 두는지
 const GIF_MAX_FRAMES = 350; // 트위터 GIF 한도
 const GIF_MAX_MB = 15;
 const MP4_FPS = 30;
-const STORE = 'doughnote:v1';
-// 예전 이름(spincard)으로 저장된 설정을 한 번만 새 이름으로 옮긴다
+const STORE = 'melclair:v1';
+// 예전 이름(doughnote·spincard)으로 저장된 설정을 한 번만 새 이름으로 옮긴다
 try {
   for (const k of ['v1', 'tab', 'theme', 'webfonts']) {
-    const old = localStorage.getItem('spincard:' + k);
-    if (old != null && localStorage.getItem('doughnote:' + k) == null) localStorage.setItem('doughnote:' + k, old);
+    if (localStorage.getItem('melclair:' + k) != null) continue;
+    const old = localStorage.getItem('doughnote:' + k) ?? localStorage.getItem('spincard:' + k);
+    if (old != null) localStorage.setItem('melclair:' + k, old);
   }
 } catch (e) {}
 
@@ -2557,7 +2558,7 @@ function sceneTick() {
 // ---------- 저장 ----------
 function fileBase() {
   const s = [$('artist').value.trim(), $('title').value.trim()].filter(Boolean).join(' - ');
-  return (s || 'doughnote').replace(/[\\/:*?"<>|]/g, '_');
+  return (s || 'melclair').replace(/[\\/:*?"<>|]/g, '_');
 }
 
 function download(blob, name) {
@@ -3508,13 +3509,13 @@ $('themeBtn').addEventListener('click', () => {
   if (light) document.documentElement.dataset.theme = 'light';
   else delete document.documentElement.dataset.theme;
   $('themeBtn').setAttribute('aria-label', light ? '다크 모드' : '화이트 모드');
-  try { localStorage.setItem('doughnote:theme', light ? 'light' : 'dark'); } catch (e) {}
+  try { localStorage.setItem('melclair:theme', light ? 'light' : 'dark'); } catch (e) {}
 });
 if (document.documentElement.dataset.theme === 'light') $('themeBtn').setAttribute('aria-label', '다크 모드');
 
 // ---------- 웹폰트 추가 ----------
 // 구글 폰트·웹폰트 CSS 주소나 글꼴 파일(woff2·ttf·otf) 주소. <link>나 @import 코드를 붙여넣어도 주소만 골라낸다
-const WEBFONT_KEY = 'doughnote:webfonts';
+const WEBFONT_KEY = 'melclair:webfonts';
 let webFonts = [];   // { url, families: [이름] }
 function saveWebFonts() { try { localStorage.setItem(WEBFONT_KEY, JSON.stringify(webFonts)); } catch (e) {} }
 function addFontOption(name) {
@@ -3622,7 +3623,7 @@ $('webFontAdd').addEventListener('click', addWebFont);
 $('webFontUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') addWebFont(); });
 
 // ---------- 탭 ----------
-const TAB_KEY = 'doughnote:tab';
+const TAB_KEY = 'melclair:tab';
 function showTab(name) {
   for (const b of document.querySelectorAll('.tab')) b.setAttribute('aria-selected', String(b.dataset.tab === name));
   for (const p of document.querySelectorAll('.pane')) p.hidden = p.dataset.pane !== name;

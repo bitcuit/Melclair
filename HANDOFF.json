@@ -1,10 +1,10 @@
 {
-  "at": "2026-10-04 12:30",
+  "at": "2026-10-04 17:00",
   "by": "claude-code",
-  "doing": "이름을 Doughnote(도우노트)로 바꾸고 디저트 폴더로 옮김",
+  "doing": "이름을 멜클레어(Melclair)로 정하고 에클레어 세 줄 아이콘을 탭·로고에 넣음",
   "where": "app.js render() / drawLyrics() / drawArt() / saveMp4() / openPicker()",
   "state": "돌아감",
-  "next": "실제 노래로 가사 시간 조정과 구간 내보내기를 써 보고 다듬기",
+  "next": "이 폴더를 00_Dessert/Melclair로 옮기기(대화방·VS Code가 폴더를 잡고 있어 아직 못 옮김)",
   "blocked": "",
   "session": { "id": "8976c071-774d-442f-9659-8d1393cee662", "title": "", "tool": "claude-code" }
 }

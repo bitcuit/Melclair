@@ -1,0 +1,20 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <clipPath id="p4"><rect x="60" y="64.0" width="904" height="268" rx="134.0"/></clipPath>
+  <g clip-path="url(#p4)">
+    <rect x="56" y="60.0" width="912" height="276" fill="#e9c99a"/>
+    <path fill="#3a2530" d="M 56 60.0 H 968 V 203.4 Q 899.4 240.9 834.9 203.4 Q 770.3 222.1 705.7 203.4 Q 641.1 240.9 576.6 203.4 Q 512.0 222.1 447.4 203.4 Q 382.9 240.9 318.3 203.4 Q 253.7 222.1 189.1 203.4 Q 124.6 240.9 60.0 203.4 L 56 203.4 Z"/>
+  </g>
+  <path d="M 180.6 136.4 L 210.7 160.5 L 271.0 112.2 L 331.2 160.5 L 391.5 112.2 L 451.7 160.5 L 512.0 112.2 L 572.3 160.5 L 632.5 112.2 L 692.8 160.5 L 753.0 112.2 L 813.3 160.5 L 843.4 136.4" fill="none" stroke="#fff7ea" stroke-width="18.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <clipPath id="p5"><rect x="60" y="378.0" width="720" height="268" rx="134.0"/></clipPath>
+  <g clip-path="url(#p5)">
+    <rect x="56" y="374.0" width="728" height="276" fill="#e9c99a"/>
+    <path fill="#a593ff" d="M 56 374.0 H 784 V 517.4 Q 728.6 554.9 677.1 517.4 Q 625.7 536.1 574.3 517.4 Q 522.9 554.9 471.4 517.4 Q 420.0 536.1 368.6 517.4 Q 317.1 554.9 265.7 517.4 Q 214.3 536.1 162.9 517.4 Q 111.4 554.9 60.0 517.4 L 56 517.4 Z"/>
+  </g>
+  <path d="M 180.6 450.4 L 210.5 474.5 L 270.4 426.2 L 330.2 474.5 L 390.1 426.2 L 449.9 474.5 L 509.8 426.2 L 569.6 474.5 L 629.5 426.2 L 659.4 450.4" fill="none" stroke="#fff7ea" stroke-width="18.8" stroke-linecap="round" stroke-linejoin="round"/>
+  <clipPath id="p6"><rect x="60" y="692.0" width="820" height="268" rx="134.0"/></clipPath>
+  <g clip-path="url(#p6)">
+    <rect x="56" y="688.0" width="828" height="276" fill="#e9c99a"/>
+    <path fill="#fff7ea" d="M 56 688.0 H 884 V 831.4 Q 821.4 868.9 762.9 831.4 Q 704.3 850.1 645.7 831.4 Q 587.1 868.9 528.6 831.4 Q 470.0 850.1 411.4 831.4 Q 352.9 868.9 294.3 831.4 Q 235.7 850.1 177.1 831.4 Q 118.6 868.9 60.0 831.4 L 56 831.4 Z"/>
+  </g>
+  <path d="M 180.6 764.4 L 209.5 788.5 L 267.4 740.2 L 325.3 788.5 L 383.2 740.2 L 441.1 788.5 L 498.9 740.2 L 556.8 788.5 L 614.7 740.2 L 672.6 788.5 L 730.5 740.2 L 759.4 764.4" fill="none" stroke="#3a2530" stroke-width="18.8" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

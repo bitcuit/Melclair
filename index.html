@@ -3,8 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Doughnote</title>
-<script>try { if ((localStorage.getItem('doughnote:theme') || localStorage.getItem('spincard:theme')) === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) {}</script>
+<title>Melclair</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<script>try { if ((localStorage.getItem('melclair:theme') || localStorage.getItem('doughnote:theme') || localStorage.getItem('spincard:theme')) === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) {}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=Noto+Serif+KR:wght@400;500;600;700&family=Hahmlet:wght@500;600&display=swap">
@@ -334,17 +335,7 @@
   ::selection { background: color-mix(in srgb, var(--sel) 40%, transparent); }
 
   .brand { display: flex; align-items: center; gap: 10px; font-family: "Hahmlet", "Pretendard", serif; font-weight: 600; font-size: 18px; letter-spacing: -0.02em; }
-  /* 로고 옆 작은 디스크: 재생 중에만 돈다 */
-  .disc {
-    width: 20px; height: 20px; border-radius: 50%; flex: none;
-    background:
-      radial-gradient(circle, var(--panel) 0 2px, #d9d2e6 2.6px 3.6px, transparent 4.2px),
-      conic-gradient(from 20deg, #2f2a37, #6c5c8c, #2f2a37 40%, #a593ff 55%, #2f2a37 70%, #4a3f5c);
-    animation: spin 2.2s linear infinite; animation-play-state: paused;
-  }
-  body.playing .disc { animation-play-state: running; }
-  @keyframes spin { to { transform: rotate(1turn); } }
-  @media (prefers-reduced-motion: reduce) { .disc { animation: none; } }
+  .logo { width: 24px; height: 24px; flex: none; display: block; }
 
   .pane h2 { font-family: "Hahmlet", "Pretendard", serif; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
   .pane > .group ~ .group, .pane > .group ~ .sel-bar ~ .group { padding-top: 18px; border-top: 1px solid var(--line); }
@@ -431,7 +422,7 @@
 </head>
 <body>
 <header>
-  <div class="brand"><span class="disc" aria-hidden="true"></span>Doughnote</div>
+  <div class="brand"><img class="logo" src="icon.svg" alt="">Melclair</div>
   <div class="seg" id="mode">
     <button data-v="player" aria-pressed="true">음악 플레이어</button>
     <button data-v="cd" aria-pressed="false">CD 플레이어</button>
