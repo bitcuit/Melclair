@@ -50,11 +50,11 @@ const state = {
 let still = null;
 
 // ---------- 설정 저장 (텍스트만) ----------
-const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font', 'glowAmt', 'chName', 'subs', 'likes', 'vTitle', 'glowSpread', 'discAngle', 'dimLen', 'dimAlpha', 'fxBright', 'fxContrast', 'fxSat', 'fxTemp', 'fxVignette', 'fxGrain', 'fxShake', 'lyFont', 'lyColor', 'pronColor', 'transColor', 'fxColor'];
+const FIELDS = ['title', 'artist', 'lyrics', 'lineSec', 'shift', 'imgSec', 'bgColor', 'size', 'fps', 'gmap', 'gmA', 'gmB', 'font', 'glowAmt', 'chName', 'subs', 'likes', 'vTitle', 'glowSpread', 'discAngle', 'dimLen', 'dimAlpha', 'volume', 'fxBright', 'fxContrast', 'fxSat', 'fxTemp', 'fxVignette', 'fxGrain', 'fxShake', 'lyFont', 'lyColor', 'pronColor', 'transColor', 'fxColor'];
 function settingsObj() {
   const o = { mode: state.mode, bgMode: state.bgMode, fx: state.fx, glow: state.glow, imgGlitch: $('imgGlitch').checked, notes, imgTrans: state.imgTrans, imgMode: state.imgMode,
       bokeh: $('bokeh').checked, gMain: $('gMain').checked, gPron: $('gPron').checked, gTrans: $('gTrans').checked,
-      align: state.align, nextLine: $('nextLine').checked, prevLine: $('prevLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked, ytDark: $('ytDark').checked,
+      align: state.align, nextLine: $('nextLine').checked, prevLine: $('prevLine').checked, beatSync: $('beatSync').checked, spin: $('spin').checked, ytDark: $('ytDark').checked, volApply: $('volApply').checked, fpsV2: true,
       retro: state.retro, lyStyle: state.lyStyle, lyCustom: state.lyCustom, capPos: state.capPos, gapCalc: $('gapCalc').checked };
   for (const f of FIELDS) o[f] = $(f).value;
   return o;
@@ -72,6 +72,9 @@ function loadSettings() {
     if (o.mode) setSeg('mode', o.mode);
     if (o.bgMode) setSeg('bgMode', o.bgMode);
     if (o.fx) setSeg('fx', o.fx);
+    if (o.volApply != null) $('volApply').checked = o.volApply;
+    // GIF 기본을 초당 10장으로 바꾸기 전에 저장된 설정은 한 번만 10장으로
+    if (!o.fpsV2) $('fps').value = '10';
     // 예전 저장값(켬/끔 체크)도 읽는다
     if (o.glow) setSeg('glow', o.glow);
     else if (o.glowOn === false) setSeg('glow', 'off');
@@ -686,6 +689,22 @@ function levelAt(t) {
 
 // 미리보기 재생: 구간을 반복해서 튼다
 let src = null, playStart = 0, playFrom = 0;
+// 볼륨: 미리보기 소리는 모두 이 마디를 거친다
+let gainNode = null, muted = false;
+function volFactor() { return (parseFloat($('volume').value) || 0) / 100; }
+function outNode(ac) {
+  if (!gainNode) { gainNode = ac.createGain(); gainNode.connect(ac.destination); }
+  gainNode.gain.value = muted ? 0 : volFactor();
+  return gainNode;
+}
+function syncVolume() {
+  if (gainNode) gainNode.gain.value = muted ? 0 : volFactor();
+  $('muteBtn').setAttribute('aria-pressed', String(muted));
+  const lb = muted ? '소리 켜기' : '소리 끄기';
+  $('muteBtn').setAttribute('aria-label', lb);
+  $('muteBtn').title = lb;
+}
+
 function stopAudio() {
   if (src) { try { src.stop(); } catch (e) {} src.disconnect(); src = null; }
 }
@@ -701,7 +720,7 @@ function restartAudio() {
     src.loopStart = au.a;
     src.loopEnd = au.b;
   }
-  src.connect(ac.destination);
+  src.connect(outNode(ac));
   playFrom = state.t;
   playStart = ac.currentTime;
   src.start(0, au.a + state.t);
@@ -3229,6 +3248,8 @@ async function saveMp4() {
       const sr = acfg.sampleRate, nch = acfg.numberOfChannels;
       const s0 = Math.floor((au.a + R.s) * sr), total = Math.floor(T * sr);
       const fadeIn = Math.floor(0.05 * sr), fadeOut = Math.floor(0.4 * sr);
+      // MP4 소리를 이 볼륨으로: 켜져 있으면 지금 볼륨 슬라이더 값만큼(음소거는 미리보기용이라 쓰지 않음)
+      const vol = $('volApply').checked ? volFactor() : 1;
       const chans = [];
       for (let k = 0; k < nch; k++) chans.push(au.buf.getChannelData(k));
       const CH = 4096;
@@ -3242,7 +3263,7 @@ async function saveMp4() {
             const pos = off + j;
             // 구간 앞뒤가 툭 끊기지 않게 살짝 줄였다 키운다
             const gain = Math.min(1, pos / fadeIn, (total - pos) / fadeOut);
-            data[k * n + j] = (src[s0 + pos] || 0) * gain;
+            data[k * n + j] = (src[s0 + pos] || 0) * gain * vol;
           }
         }
         const ad = new AudioData({ format: 'f32-planar', sampleRate: sr, numberOfFrames: n, numberOfChannels: nch, timestamp: Math.round((off * 1e6) / sr), data });
@@ -3583,6 +3604,9 @@ audioDrop.addEventListener('drop', (e) => {
 $('audioRemove').addEventListener('click', removeAudio);
 
 $('findLyrics').addEventListener('click', findLyrics);
+$('volume').addEventListener('input', () => { if (muted && volFactor() > 0) muted = false; syncVolume(); saveSettings(); });
+$('muteBtn').addEventListener('click', () => { muted = !muted; syncVolume(); });
+$('volApply').addEventListener('change', saveSettings);
 $('discAngle').addEventListener('input', () => { $('discAngleVal').textContent = `${$('discAngle').value}°`; });
 $('avatarFile').addEventListener('change', (e) => { setAvatar(e.target.files[0]); e.target.value = ''; });
 $('refit').addEventListener('click', () => {

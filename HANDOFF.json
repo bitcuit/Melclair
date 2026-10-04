@@ -1,7 +1,7 @@
 {
-  "at": "2026-10-04 22:00",
+  "at": "2026-10-05 00:10",
   "by": "claude-code",
-  "doing": "제목 뒤 딤 길이·진하기, 글꼴 목록의 웹폰트 추가 팝업, 안내 뱃지 바탕",
+  "doing": "볼륨 조절과 MP4 소리 볼륨 반영, GIF 기본 초당 10장, 가사 시간·구간 저장 고침",
   "where": "app.js render() / drawLyrics() / drawArt() / saveMp4() / openPicker()",
   "state": "돌아감",
   "next": "깃허브 페이지에 올려 실제 주소에서 GIF·MP4 저장과 가사 찾기 확인",

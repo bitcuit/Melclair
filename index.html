@@ -279,6 +279,8 @@
   }
   .time { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--dim); min-width: 84px; flex: none; }
   #seek { flex: 1; accent-color: var(--text); }
+  input.vol { width: 96px; flex: none; }
+  #muteBtn[aria-pressed=true] .on, #muteBtn:not([aria-pressed=true]) .off { display: none; }
   .scenes { display: flex; gap: 8px; overflow-x: auto; overflow-y: hidden; padding: 2px 2px 6px; }
   .scenes:empty { display: none; }
   .scene {
@@ -429,7 +431,8 @@
   .canvas-hint { background: rgba(22,20,27,.88); border: 1px solid rgba(236,232,241,.16); color: #f1ecf4; backdrop-filter: blur(10px); box-shadow: 0 6px 20px rgba(0,0,0,.35); }
   .timeline { background: var(--panel); }
   .wave { background: var(--bg); }
-  .pop { box-shadow: 0 18px 60px rgba(0,0,0,.55); }
+  /* 떠 있다는 정도만: 짧고 옅은 그림자 */
+  .pop { box-shadow: 0 6px 18px rgba(0,0,0,.28); }
   .picker { background: var(--stage); }
   .thumb, .tile { background: var(--bg); }
 
@@ -471,8 +474,8 @@
       </div>
       <div class="row"><span class="lbl">GIF</span>
         <select id="fps">
-          <option value="10">초당 10장</option>
-          <option value="20" selected>초당 20장</option>
+          <option value="10" selected>초당 10장</option>
+          <option value="20">초당 20장</option>
           <option value="25">초당 25장</option>
         </select>
       </div>
@@ -488,6 +491,7 @@
       </div>
       <label class="check" id="rangeSnapRow" hidden><input type="checkbox" id="rangeSnap" checked>가사에 맞춰 자르기</label>
       <div class="info" id="exportInfo"></div>
+      <label class="check"><input type="checkbox" id="volApply" checked>MP4 소리를 이 볼륨으로</label>
       <hr>
       <button class="btn primary wide" id="saveMp4">MP4 저장<small>소리 포함</small></button>
       <button class="btn wide" id="saveGif">GIF 저장<small>소리 없음</small></button>
@@ -855,6 +859,11 @@
       <button class="play" id="play" aria-label="일시정지">❚❚</button>
       <span class="time" id="time">0:00 / 0:00</span>
       <input type="range" id="seek" min="0" max="1" step="0.01" value="0" aria-label="재생 위치">
+      <button class="icon-btn" id="muteBtn" aria-label="소리 끄기" title="소리 끄기">
+        <svg class="on" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"/></svg>
+        <svg class="off" viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path d="M17 9.5l5 5M22 9.5l-5 5"/></svg>
+      </button>
+      <input type="range" id="volume" min="0" max="100" step="1" value="80" aria-label="볼륨" class="vol">
     </div>
     <div class="scenes" id="scenes"></div>
     <div class="wave-row" id="waveRow" hidden>
