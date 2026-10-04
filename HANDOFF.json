@@ -1,7 +1,7 @@
 {
-  "at": "2026-10-04 12:00",
+  "at": "2026-10-04 12:30",
   "by": "claude-code",
-  "doing": "가사 카드 접기·검색·복사·시간 조정, 내보내기 구간, 필름·색 효과, 사용법 보강",
+  "doing": "이름을 Doughnote(도우노트)로 바꾸고 디저트 폴더로 옮김",
   "where": "app.js render() / drawLyrics() / drawArt() / saveMp4() / openPicker()",
   "state": "돌아감",
   "next": "실제 노래로 가사 시간 조정과 구간 내보내기를 써 보고 다듬기",

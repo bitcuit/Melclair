@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Spincard</title>
-<script>try { if (localStorage.getItem('spincard:theme') === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) {}</script>
+<title>Doughnote</title>
+<script>try { if ((localStorage.getItem('doughnote:theme') || localStorage.getItem('spincard:theme')) === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) {}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;600;700&family=Noto+Serif+KR:wght@400;500;600;700&family=Hahmlet:wght@500;600&display=swap">
@@ -431,7 +431,7 @@
 </head>
 <body>
 <header>
-  <div class="brand"><span class="disc" aria-hidden="true"></span>Spincard</div>
+  <div class="brand"><span class="disc" aria-hidden="true"></span>Doughnote</div>
   <div class="seg" id="mode">
     <button data-v="player" aria-pressed="true">음악 플레이어</button>
     <button data-v="cd" aria-pressed="false">CD 플레이어</button>
