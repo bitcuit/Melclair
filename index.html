@@ -367,7 +367,8 @@
   #seek { accent-color: var(--accent); }
   .btn { background: var(--soft); }
   .btn:hover { background: var(--raise); }
-  .btn.primary:hover { opacity: .9; }
+  /* 주요 버튼은 마우스를 올려도 자기 색을 지킨다(일반 버튼 배경이 덮어 글자가 안 보이던 것) */
+  .btn.primary:hover { background: var(--accent); border-color: var(--accent); color: var(--accent-text); opacity: .86; }
   .file-row, .ledit { background: var(--bg); }
   .lcard, .st-row { background: color-mix(in srgb, var(--bg) 50%, transparent); }
 

@@ -950,6 +950,7 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     removeSticker(selSticker);
   } else if (e.code === 'Escape') {
+    // Esc는 내보내기 창이 열려 있으면 그것부터 닫는다
     if (!$('exportPop').hidden) closeExport();
     else selectSticker(null);
   }
@@ -3458,7 +3459,12 @@ function showHint(h) {
   const el = $('canvasHint');
   const text = h ? HINTS[h.type] : '';
   el.hidden = !text;
-  if (text) el.textContent = text;
+  if (!text) return;
+  el.textContent = text;
+  // 카드(미리보기) 아래 끝 안쪽에 붙인다. 가로로 짧은 동영상 모양에서도 카드와 같은 자리에 오게
+  const wr = el.parentElement.getBoundingClientRect(), sr = stage.getBoundingClientRect();
+  el.style.bottom = 'auto';
+  el.style.top = `${sr.bottom - wr.top - el.offsetHeight - 12}px`;
 }
 stage.addEventListener('wheel', (e) => {
   const hit = hitAt(e);
@@ -3781,9 +3787,7 @@ $('exportBtn').addEventListener('click', () => {
   $('exportBtn').setAttribute('aria-expanded', String(open));
   if (open) updateInfo();
 });
-document.addEventListener('pointerdown', (e) => {
-  if (!$('exportPop').hidden && !e.target.closest('.export')) closeExport();
-});
+// 내보내기 창은 바깥을 눌러도 닫히지 않는다(구간을 고르며 미리보기를 만지기 때문). 버튼을 다시 누르거나 Esc로 닫는다
 $('pickClose').addEventListener('click', () => { pickJob++; $('picker').hidden = true; });
 $('pickSave').addEventListener('click', savePicks);
 $('pickAll').addEventListener('click', () => {
