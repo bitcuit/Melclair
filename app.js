@@ -3776,7 +3776,11 @@ $('selAll').addEventListener('change', () => {
   renderNotes();
 });
 $('selKeep').addEventListener('click', () => editSelected(true));
-$('lyricSearch').addEventListener('input', renderNotes);
+$('lyricSearch').addEventListener('input', () => {
+  // 접혀 있으면 찾은 줄이 안 보이니 펴 준다
+  if ($('cardsBody').hidden) { $('cardsBody').hidden = false; $('cardsToggle').setAttribute('aria-expanded', 'true'); }
+  renderNotes();
+});
 // 카드 전체 접기: 검색·선택 막대·카드를 통째로
 $('cardsToggle').addEventListener('click', () => {
   const open = $('cardsToggle').getAttribute('aria-expanded') === 'true';
