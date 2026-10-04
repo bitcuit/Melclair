@@ -929,7 +929,7 @@ document.addEventListener('keydown', (e) => {
   }
   const typing = /INPUT|TEXTAREA|SELECT/.test(document.activeElement && document.activeElement.tagName)
     && !['checkbox', 'range', 'color'].includes(document.activeElement.type);
-  if (typing || state.busy || $('help').open) return;
+  if (typing || state.busy || $('help').open || $('resetDlg').open) return;
   if (e.code === 'Space') { e.preventDefault(); setPlaying(!state.playing); }
   else if (e.code === 'ArrowRight' || e.code === 'ArrowLeft') {
     if (!scenes.length) return;
@@ -3492,6 +3492,19 @@ $('eyeBtn').addEventListener('click', () => {
   updateInfo();
   $('eyeBtn').setAttribute('aria-pressed', String(fxVisible));
   $('eyeBtn').setAttribute('aria-label', fxVisible ? '효과 숨기기' : '효과 보이기');
+});
+
+// ---------- 새로 시작 ----------
+// 작업 내용(그림·노래·가사·스티커·설정)을 모두 지우고 처음 상태로. 화면 밝기와 추가한 웹폰트는 편집기 환경이라 남긴다
+$('resetBtn').addEventListener('click', () => $('resetDlg').showModal());
+$('resetCancel').addEventListener('click', () => $('resetDlg').close());
+$('resetOk').addEventListener('click', () => {
+  try {
+    // 예전 이름으로 남은 설정도 지운다(안 지우면 다시 열 때 옮겨 와서 되살아난다)
+    for (const p of ['melclair:', 'doughnote:', 'spincard:']) for (const k of ['v1', 'tab']) localStorage.removeItem(p + k);
+  } catch (e) {}
+  // 그림·노래·스티커는 이 페이지에만 있어서 새로 불러오면 사라진다
+  location.reload();
 });
 
 // ---------- 사용법 ----------

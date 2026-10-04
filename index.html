@@ -385,6 +385,12 @@
     background: var(--panel); color: var(--text); box-shadow: 0 24px 80px rgba(0,0,0,.45);
   }
   dialog.help::backdrop { background: rgba(8,7,10,.55); backdrop-filter: blur(3px); }
+  dialog.confirm { width: min(380px, calc(100vw - 32px)); }
+  dialog.confirm h2 { margin: 0 0 8px; font-family: "Hahmlet", "Noto Sans KR", serif; font-size: 20px; font-weight: 600; }
+  dialog.confirm p { margin: 0 0 18px; color: var(--dim); line-height: 1.6; }
+  .confirm-btns { justify-content: flex-end; }
+  .btn.danger { background: #e0524d; border-color: #e0524d; color: #fff; }
+  .btn.danger:hover { background: #c94440; }
   .help-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
   .help-head h2 { margin: 0; font-family: "Hahmlet", "Noto Sans KR", serif; font-size: 22px; font-weight: 600; letter-spacing: -0.02em; }
   .help-head .x { font-size: 20px; }
@@ -430,6 +436,7 @@
   </div>
   <span class="grow"></span>
   <span class="status" id="status"></span>
+  <button class="btn ghost" id="resetBtn">새로 시작</button>
   <button class="theme-btn help-btn" id="helpBtn" aria-label="사용법">?</button>
   <button class="theme-btn" id="themeBtn" aria-label="화이트 모드">
     <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
@@ -757,6 +764,15 @@
     <label class="drop" id="stickerDrop">PNG · JPG · GIF 넣기<input type="file" id="stickerFile" accept="image/png,image/jpeg,image/gif,image/webp" multiple hidden></label>
   </div>
 </aside>
+
+<dialog class="help confirm" id="resetDlg" aria-labelledby="resetTitle">
+  <h2 id="resetTitle">새로 시작할까요?</h2>
+  <p>그림 · 노래 · 가사 · 스티커 · 설정이 모두 사라지고 되돌릴 수 없어요.</p>
+  <div class="row confirm-btns">
+    <button class="btn" id="resetCancel">그대로 두기</button>
+    <button class="btn danger" id="resetOk">모두 지우고 새로 시작</button>
+  </div>
+</dialog>
 
 <dialog class="help" id="help" aria-labelledby="helpTitle">
   <div class="help-head">
