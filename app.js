@@ -148,14 +148,22 @@ function parseLyrics() {
       for (const start of times) lines.push({ text: s.trim(), start, para });
     }
     lines.sort((x, y) => x.start - y.start);
-    // 반주·빈 구간 계산: 줄 길이를 글자 수로 어림해서, 다음 줄까지 틈이 크면 그 사이는 비운다
+    // 반주·빈 구간 계산: 그 노래의 보통 줄 간격(중앙값)보다 확실히 긴 간격(2배 이상이면서 4초 넘게 더 김)만
+    // 간주로 보고, 그때만 보통 간격쯤에서 가사를 내린다. 그 밖에는 다음 줄이 나올 때까지 그대로
     const gap = $('gapCalc').checked;
+    const iv = [];
+    for (let i = 0; i + 1 < lines.length; i++) if (lines[i].text) iv.push(lines[i + 1].start - lines[i].start);
+    iv.sort((x, y) => x - y);
+    const med = iv.length ? iv[Math.floor(iv.length / 2)] : num('lineSec', 3);
     lines.forEach((l, i) => {
       const next = i + 1 < lines.length ? lines[i + 1].start : null;
       if (!gap || !l.text) { l.end = next != null ? next : l.start + num('lineSec', 3); return; }
-      const est = Math.max(2.5, Math.min(8, 1.2 + [...l.text].length * 0.32));
-      if (next == null) l.end = l.start + est;
-      else l.end = next - (l.start + est) > 1.5 ? l.start + est : next;
+      const hold = Math.max(2.5, med * 1.3);
+      if (next == null) l.end = l.start + hold;
+      else {
+        const span = next - l.start;
+        l.end = span > Math.max(med * 2, med + 4) ? l.start + hold : next;
+      }
     });
     return { timed: true, lines };
   }
@@ -2442,11 +2450,24 @@ function exportRange() {
   b = isNaN(b) ? T : b - off;
   a = Math.max(0, Math.min(T - 0.2, a));
   b = Math.max(a + 0.2, Math.min(T, b));
-  return { s: a, e: b };
+  // 가사에 맞춰 자르기: 시작이 줄 중간이면 그 줄 시작으로, 끝이 줄 중간이면 그 줄이 끝나는 때(다음 줄 직전)까지
+  let snapped = false;
+  if ($('rangeSnap').checked) {
+    const lyr = parseLyrics();
+    const base = lyr.timed ? songBase(lyr) : 0;
+    const shift = parseFloat($('shift').value) || 0;
+    for (const l of lyr.lines) {
+      if (!l.text) continue;
+      const ls = l.start - base + shift, le = l.end - base + shift;
+      if (ls < a && a < le) { a = Math.max(0, ls); snapped = true; }
+      if (ls < b && b < le) { b = Math.min(T, le); snapped = true; }
+    }
+  }
+  return { s: a, e: b, snapped };
 }
 function syncRange() {
   const on = $('rangeOn').checked;
-  $('rangeRow').hidden = $('rangeBtns').hidden = !on;
+  $('rangeRow').hidden = $('rangeBtns').hidden = $('rangeSnapRow').hidden = !on;
   if (on && !$('rangeA').value) {
     const off = songOffset();
     $('rangeA').value = fmtTenth(off);
@@ -2475,7 +2496,11 @@ function updateInfo() {
   refreshThumbSecs();
   if (state.t > T && !state.tap) state.t = 0;
   const p = gifPlan();
-  let s = `${$('rangeOn').checked ? '구간 ' : ''}${fmt(p.T)} · GIF ${p.frames}장`;
+  const R = exportRange();
+  const off = songOffset();
+  let s = $('rangeOn').checked
+    ? `${fmtTenth(off + R.s)}~${fmtTenth(off + R.e)}${R.snapped ? '(가사에 맞춤)' : ''} · ${fmt(p.T)} · GIF ${p.frames}장`
+    : `${fmt(p.T)} · GIF ${p.frames}장`;
   if (p.over) s += ' — 트위터 GIF는 350장까지라 구간을 줄여야 합니다';
   else if (p.lowered) s += ` · 트위터 350장 한도라 초당 ${p.fps}장으로 낮춤`;
   if (p.T > 140) s += ' · 트위터 동영상은 일반 계정 2분 20초까지';
@@ -3779,6 +3804,7 @@ $('retro').addEventListener('click', (e) => {
 });
 $('rangeOn').addEventListener('change', syncRange);
 for (const id of ['rangeA', 'rangeB']) $(id).addEventListener('change', updateInfo);
+$('rangeSnap').addEventListener('change', updateInfo);
 $('rangeFromNow').addEventListener('click', () => { $('rangeA').value = fmtTenth(songOffset() + state.t); updateInfo(); });
 $('rangeToNow').addEventListener('click', () => { $('rangeB').value = fmtTenth(songOffset() + state.t); updateInfo(); });
 $('exportBtn').addEventListener('click', () => {
