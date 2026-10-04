@@ -1,0 +1,67 @@
+<!-- 배너 원본. 1600x1200(banner.png)·2134x1200(banner-16x9.png) 창 크기로 열어 그대로 캡처한다.
+     위에 세 모양(음악 플레이어·동영상·CD 플레이어)으로 만든 실제 화면, 아래에 이름과 한 줄 소개.
+     player.jpg·cd.jpg·yt.jpg는 앱에서 같은 순간을 세 모양으로 저장한 그림(표지·가사 모두 직접 만든 것) -->
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<title>Melclair Banner</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css">
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  html, body { width: 100%; height: 100%; }
+  body {
+    font-family: "Pretendard Variable", Pretendard, sans-serif;
+    color: #2a2230;
+    background:
+      radial-gradient(ellipse 60% 50% at 50% 30%, rgba(165,147,255,.20), transparent 70%),
+      #f6f2f4;
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden; position: relative;
+  }
+  /* 가사 노트 줄 */
+  body::before {
+    content: ""; position: absolute; inset: 0;
+    background-image: linear-gradient(rgba(58,37,48,.06) 2px, transparent 2px);
+    background-size: 100% 64px;
+    mask-image: radial-gradient(ellipse at center, #000 30%, transparent 85%);
+  }
+  .wrap { position: relative; display: flex; flex-direction: column; align-items: center; gap: 70px; }
+  .cards { display: flex; align-items: flex-end; gap: 40px; }
+  .cards img { display: block; height: 560px; border-radius: 22px; box-shadow: 0 30px 60px rgba(58,37,48,.22), 0 6px 14px rgba(58,37,48,.12); }
+  .cards .yt { height: 620px; }
+  .text { text-align: center; }
+  .name { display: flex; align-items: center; justify-content: center; gap: 30px; }
+  .name img { width: 130px; height: 130px; }
+  .word { font-size: 150px; font-weight: 850; letter-spacing: -0.01em; line-height: 1; }
+  .en { font-size: 46px; font-weight: 650; color: #75677a; margin-top: 16px; }
+  .tag { font-size: 44px; font-weight: 600; letter-spacing: -0.025em; color: #4a4050; margin-top: 30px; white-space: nowrap; }
+  .tag b { color: #6c58d6; font-weight: 800; }
+
+  /* 4:3 — 카드를 줄인다 */
+  .tall .wrap { gap: 56px; }
+  .tall .cards { gap: 28px; }
+  .tall .cards img { height: 400px; }
+  .tall .cards .yt { height: 440px; }
+  .tall .word { font-size: 120px; }
+  .tall .name img { width: 108px; height: 108px; }
+  .tall .en { font-size: 40px; }
+  .tall .tag { font-size: 40px; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="cards">
+      <img src="player.jpg" alt="">
+      <img class="yt" src="yt.jpg" alt="">
+      <img src="cd.jpg" alt="">
+    </div>
+    <div class="text">
+      <div class="name"><img src="../icon.svg" alt=""><span class="word">멜클레어</span></div>
+      <div class="en">Melclair</div>
+      <div class="tag">노래 한 순간을 <b>가사 카드 · GIF · MP4로</b></div>
+    </div>
+  </div>
+<script>if (innerWidth / innerHeight < 1.5) document.body.classList.add("tall");</script>
+</body>
+</html>

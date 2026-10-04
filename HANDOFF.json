@@ -1,10 +1,10 @@
 {
-  "at": "2026-10-04 21:02",
+  "at": "2026-10-04 21:10",
   "by": "claude-code",
-  "doing": "도움말 창을 닫으면 펼친 자주 묻는 것이 접히게 함",
-  "where": "index.html #help #helpTab, app.js helpTab()",
+  "doing": "배너 두 장(4:3·16:9) 만듦 — 세 모양 실제 화면 + 이름",
+  "where": "banner/banner.html → banner.png, banner-16x9.png",
   "state": "돌아감",
-  "next": "실제 마우스로 프로필 사진 끌기·트위터 올리기 확인",
+  "next": "배너 확인받고 README나 안내 페이지에 붙이기",
   "blocked": "",
   "session": {
     "id": "8976c071-774d-442f-9659-8d1393cee662",
