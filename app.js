@@ -3679,9 +3679,19 @@ $('resetOk').addEventListener('click', () => {
 
 // ---------- 사용법 ----------
 $('helpBtn').addEventListener('click', () => $('help').showModal());
+// 사용법 · 자주 묻는 것
+function helpTab(v) {
+  for (const b of $('helpTab').children) b.setAttribute('aria-pressed', b.dataset.v === v);
+  $('helpUse').hidden = v !== 'use';
+  $('helpFaq').hidden = v !== 'faq';
+  $('help').scrollTop = 0;
+}
+for (const b of $('helpTab').children) b.addEventListener('click', () => helpTab(b.dataset.v));
 $('helpClose').addEventListener('click', () => $('help').close());
 // 창 바깥(어두운 막)을 누르면 닫는다
 $('help').addEventListener('click', (e) => {
+  // 바깥(뒤 가림막)을 누를 때만. 키보드 Enter로 누른 클릭은 좌표가 0이라 안쪽 대상이면 무시
+  if (e.target !== $('help')) return;
   const r = $('help').getBoundingClientRect();
   if (e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom) $('help').close();
 });

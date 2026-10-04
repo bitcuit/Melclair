@@ -1,10 +1,14 @@
 {
-  "at": "2026-10-04 20:33",
+  "at": "2026-10-04 21:01",
   "by": "claude-code",
-  "doing": "동영상 모양 MP4 저장 고침, 프로필 사진 끌어서 맞추기, 도움말에 자주 묻는 것 추가",
-  "where": "app.js heightOf·exportWidth(짝수), hitAt 'avatar', index.html #help .faq",
+  "doing": "도움말 창을 사용법 · 자주 묻는 것 탭으로 나눔",
+  "where": "index.html #help #helpTab, app.js helpTab()",
   "state": "돌아감",
   "next": "실제 마우스로 프로필 사진 끌기·트위터 올리기 확인",
   "blocked": "",
-  "session": { "id": "8976c071-774d-442f-9659-8d1393cee662", "title": "", "tool": "claude-code" }
+  "session": {
+    "id": "8976c071-774d-442f-9659-8d1393cee662",
+    "title": "",
+    "tool": "claude-code"
+  }
 }
