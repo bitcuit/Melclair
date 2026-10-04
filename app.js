@@ -629,7 +629,8 @@ async function loadAudio(file) {
       if (flux > 0.18 && tt - lastOn > 0.2) { onsets.push({ t: tt, s: Math.min(1, flux / 0.7) }); lastOn = tt; }
     }
 
-    state.audio = { name: file.name, buf, peaks, env, onsets, a: 0, b: Math.min(15, buf.duration) };
+    // 처음엔 곡 전체. 필요한 부분은 파형에서 고르거나 내보내기의 구간만 저장으로
+    state.audio = { name: file.name, buf, peaks, env, onsets, a: 0, b: buf.duration };
 
     // "가수 - 제목.mp3" 꼴이면 빈 칸을 채운다
     const stem = file.name.replace(/\.[^.]+$/, '');
@@ -2473,6 +2474,7 @@ function updateInfo() {
   let s = `${$('rangeOn').checked ? '구간 ' : ''}${fmt(p.T)} · GIF ${p.frames}장`;
   if (p.over) s += ' — 트위터 GIF는 350장까지라 구간을 줄여야 합니다';
   else if (p.lowered) s += ` · 트위터 350장 한도라 초당 ${p.fps}장으로 낮춤`;
+  if (p.T > 140) s += ' · 트위터 동영상은 일반 계정 2분 20초까지';
   if (view.hideFx) s += ' · 효과 숨김 상태로 저장됩니다';
   $('exportInfo').textContent = s;
 }
