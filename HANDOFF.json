@@ -1,10 +1,10 @@
 {
-  "at": "2026-10-05 00:10",
+  "at": "2026-10-04 20:33",
   "by": "claude-code",
-  "doing": "볼륨 조절과 MP4 소리 볼륨 반영, GIF 기본 초당 10장, 가사 시간·구간 저장 고침",
-  "where": "app.js render() / drawLyrics() / drawArt() / saveMp4() / openPicker()",
+  "doing": "동영상 모양 MP4 저장 고침, 프로필 사진 끌어서 맞추기, 도움말에 자주 묻는 것 추가",
+  "where": "app.js heightOf·exportWidth(짝수), hitAt 'avatar', index.html #help .faq",
   "state": "돌아감",
-  "next": "깃허브 페이지에 올려 실제 주소에서 GIF·MP4 저장과 가사 찾기 확인",
+  "next": "실제 마우스로 프로필 사진 끌기·트위터 올리기 확인",
   "blocked": "",
   "session": { "id": "8976c071-774d-442f-9659-8d1393cee662", "title": "", "tool": "claude-code" }
 }

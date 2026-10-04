@@ -1998,6 +1998,7 @@ function captionGeom(u) {
   return { cx, bottom, maxW };
 }
 let capRect = null;  // 미리보기에 그려진 자막 칸
+let avRect = null;   // 미리보기에 그려진 프로필 사진
 
 function drawVideoPage(g, W, H, u, t, T) {
   const dark = $('ytDark').checked;
@@ -2097,7 +2098,8 @@ function drawVideoPage(g, W, H, u, t, T) {
   g.save();
   g.beginPath(); g.arc(ax, ry, ar, 0, Math.PI * 2); g.clip();
   const chName = $('chName').value.trim() || artist || '채널';
-  if (avatar) drawCover(g, avatar.img, ax - ar, ry - ar, ar * 2, ar * 2);
+  if (g === ctx) avRect = avatar ? { x: ax - ar, y: ry - ar, w: ar * 2, h: ar * 2 } : null;
+  if (avatar) drawCover(g, avatar.img, ax - ar, ry - ar, ar * 2, ar * 2, avatar);
   else {
     g.fillStyle = '#7b6cd9';
     g.fillRect(ax - ar, ry - ar, ar * 2, ar * 2);
@@ -2208,7 +2210,7 @@ function setAvatar(file) {
   const img = new Image();
   img.onload = () => {
     if (avatar) URL.revokeObjectURL(avatar.url);
-    avatar = { url, img };
+    avatar = { url, img, fx: 0.5, fy: 0.5, zoom: 1 };
     $('avatarDrop').style.backgroundImage = `url("${url}")`;
     $('avatarDrop').classList.add('has');
   };
@@ -2461,8 +2463,9 @@ function drawDisc(g, cx, cy, R, u, t, T) {
 // ---------- 미리보기 ----------
 // 화면 비율(세로/가로). 동영상 페이지는 가로라서 저장 크기도 1.6배로 잡는다
 function ratio() { return state.mode === 'yt' ? 0.72 : 4 / 3; }
-function heightOf(W) { return Math.round(W * ratio()); }
-function exportWidth() { return Math.round(parseInt($('size').value, 10) * (state.mode === 'yt' ? 1.6 : 1)); }
+// H.264는 가로·세로가 짝수여야 한다
+function heightOf(W) { return Math.round(W * ratio() / 2) * 2; }
+function exportWidth() { return Math.round(parseInt($('size').value, 10) * (state.mode === 'yt' ? 1.6 : 1) / 2) * 2; }
 function syncSizeLabels() {
   for (const o of $('size').options) {
     const w = Math.round(parseInt(o.value, 10) * (state.mode === 'yt' ? 1.6 : 1));
@@ -3436,6 +3439,7 @@ function hitAt(e) {
     const lx = dx * Math.cos(a) - dy * Math.sin(a), ly = dx * Math.sin(a) + dy * Math.cos(a);
     if (Math.abs(lx) <= w / 2 && Math.abs(ly) <= h / 2) return { type: 'sticker', st, p };
   }
+  if (state.mode === 'yt' && avatar && avRect && inBox(p, avRect)) return { type: 'avatar', p };
   if (state.mode === 'yt' && capRect && inBox(p, capRect)) return { type: 'caption', p };
   if (currentImage() && inBox(p, artRect())) return { type: 'art', p };
   return null;
@@ -3465,6 +3469,7 @@ stage.addEventListener('pointerdown', (e) => {
   const p = hit.p;
   if (hit.type === 'sticker') { selectSticker(hit.st); sdrag = { ...hit, x0: hit.st.x, y0: hit.st.y }; }
   else if (hit.type === 'caption') sdrag = { ...hit, dx0: state.capPos.dx, dy0: state.capPos.dy };
+  else if (hit.type === 'avatar') sdrag = { ...hit, it: avatar, fx: avatar.fx, fy: avatar.fy };
   else {
     const it = currentImage();
     sdrag = { ...hit, it, fx: it.fx ?? 0.5, fy: it.fy ?? 0.5 };
@@ -3494,15 +3499,15 @@ stage.addEventListener('pointermove', (e) => {
     state.capPos.dx = (cap.cx - (v.x + v.w / 2)) / u;
     state.capPos.dy = (cap.bottom - (v.y + v.h - 34 * u)) / u;
   } else {
-    const it = sdrag.it, a = artRect();
-    const img = srcOf(it);
+    const it = sdrag.it, a = sdrag.type === 'avatar' ? avRect : artRect();
+    const img = sdrag.type === 'avatar' ? it.img : srcOf(it);
     const iw = img.naturalWidth || img.width, ih = img.naturalHeight || img.height;
     const sc = Math.max(a.w / iw, a.h / ih) * (it.zoom || 1);
     const ox = iw * sc - a.w, oy = ih * sc - a.h;
     // CD는 돌고 있어서 끈 방향과 그림이 움직이는 방향이 어긋날 수 있다
     if (ox > 0) it.fx = Math.max(0, Math.min(1, sdrag.fx - mx / ox));
     if (oy > 0) it.fy = Math.max(0, Math.min(1, sdrag.fy - my / oy));
-    syncFit(it);
+    if (sdrag.type === 'art') syncFit(it);
   }
 });
 const endDrag = () => {
@@ -3519,6 +3524,7 @@ const HINTS = {
   art: '끌어서 이동 · 휠로 확대 · 두 번 눌러 되돌리기',
   sticker: '끌어서 이동 · 휠로 크기 · Delete로 지우기',
   caption: '끌어서 자막 옮기기 · 두 번 눌러 되돌리기',
+  avatar: '끌어서 프로필 사진 옮기기 · 휠로 확대 · 두 번 눌러 되돌리기',
 };
 function showHint(h) {
   const el = $('canvasHint');
@@ -3542,6 +3548,7 @@ stage.addEventListener('wheel', (e) => {
     renderStickers();
     return;
   }
+  if (hit.type === 'avatar') { avatar.zoom = Math.max(1, Math.min(4, avatar.zoom * k)); return; }
   const it = currentImage();
   it.zoom = Math.max(1, Math.min(4, (it.zoom || 1) * k));
   syncFit(it);
@@ -3553,6 +3560,9 @@ stage.addEventListener('dblclick', (e) => {
   if (hit.type === 'caption') {
     state.capPos.dx = state.capPos.dy = 0;
     saveSettings();
+  } else if (hit.type === 'avatar') {
+    avatar.fx = avatar.fy = 0.5;
+    avatar.zoom = 1;
   } else if (hit.type === 'art') {
     const it = currentImage();
     it.fx = it.fy = 0.5;
