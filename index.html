@@ -195,15 +195,7 @@
   .icon-btn:hover { background: var(--raise); }
   .icon-btn svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
   input[type=search] { width: 100%; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; outline: none; color: inherit; font: inherit; }
-  .lhead {
-    width: 100%; display: grid; grid-template-columns: 14px 36px 1fr auto; gap: 8px; align-items: center;
-    border: 0; background: var(--soft); color: var(--dim); padding: 6px 10px; cursor: pointer; text-align: left; font-size: 12px;
-  }
-  .lhead:hover { color: var(--text); }
-  .lcard.folded .chev { transform: rotate(-90deg); }
   .chev { transition: transform .15s; font-size: 10px; }
-  .lh-time { font-variant-numeric: tabular-nums; color: var(--faint); }
-  .lh-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .lh-count { color: var(--faint); }
   .ltext mark { background: color-mix(in srgb, var(--sel) 35%, transparent); color: inherit; border-radius: 2px; }
   .ledit .row .btn.sm { flex: none; }
@@ -622,7 +614,6 @@
     <div class="cards-body" id="cardsBody">
     <div class="row" id="lyricTools" hidden>
       <input type="search" id="lyricSearch" placeholder="가사 검색" aria-label="가사 검색">
-      <button class="icon-btn" id="foldAll" aria-label="문단 모두 접기" title="문단 모두 접기"></button>
     </div>
     <div class="sel-bar" id="selBar" hidden>
       <input type="checkbox" id="selAll" aria-label="모두 고르기">

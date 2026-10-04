@@ -2860,7 +2860,6 @@ function noteSet(text, key, val) {
   saveSettings();
 }
 
-const lfold = new Set();  // 접은 문단(첫 줄 번호)
 function renderNotes() {
   const box = $('lyricCards');
   if (!box) return;
@@ -2871,14 +2870,6 @@ function renderNotes() {
   box.innerHTML = '';
   $('selBar').hidden = !paras.length;
   $('lyricTools').hidden = !paras.length;
-  // 문단 모두 접기·펴기: 아이콘(안으로 모이는 화살표 = 접기, 밖으로 퍼지는 화살표 = 펴기)
-  const allFolded = paras.length && paras.every((pa) => lfold.has(pa[0].i));
-  const fl = allFolded ? '문단 모두 펴기' : '문단 모두 접기';
-  $('foldAll').innerHTML = allFolded
-    ? '<svg viewBox="0 0 24 24"><path d="M7 9l5-5 5 5M7 15l5 5 5-5"/></svg>'
-    : '<svg viewBox="0 0 24 24"><path d="M7 4l5 5 5-5M7 20l5-5 5 5"/></svg>';
-  $('foldAll').setAttribute('aria-label', fl);
-  $('foldAll').title = fl;
   // 카드 전체 접기 머리줄
   $('cardsToggle').hidden = !paras.length;
   $('cardsCount').textContent = paras.length ? `${rows.filter((r) => r.text).length}줄` : '';
@@ -2891,24 +2882,9 @@ function renderNotes() {
   paras.forEach((para) => {
     const hits = para.filter(match);
     if (!hits.length) return;
-    const folded = !q && lfold.has(para[0].i);
     const card = document.createElement('div');
-    card.className = 'lcard' + (folded ? ' folded' : '');
-    // 머리줄: 시각 · 첫 줄 · 줄 수. 누르면 접기
-    const head = document.createElement('button');
-    head.className = 'lhead';
-    head.setAttribute('aria-expanded', String(!folded));
-    const t0 = stampSec(para[0].prefix);
-    head.innerHTML = '<span class="chev">▾</span><span class="lh-time"></span><span class="lh-text"></span><span class="lh-count"></span>';
-    head.querySelector('.lh-time').textContent = t0 == null ? '' : fmt(t0);
-    head.querySelector('.lh-text').textContent = para[0].text;
-    head.querySelector('.lh-count').textContent = `${para.length}줄`;
-    head.addEventListener('click', () => {
-      if (lfold.has(para[0].i)) lfold.delete(para[0].i); else lfold.add(para[0].i);
-      renderNotes();
-    });
-    card.append(head);
-    if (!folded) for (const r of (q ? hits : para)) {
+    card.className = 'lcard';
+    for (const r of (q ? hits : para)) {
       shown++;
       const n = notes[r.text] || {};
       const row = document.createElement('div');
@@ -3806,13 +3782,6 @@ $('cardsToggle').addEventListener('click', () => {
   const open = $('cardsToggle').getAttribute('aria-expanded') === 'true';
   $('cardsToggle').setAttribute('aria-expanded', String(!open));
   $('cardsBody').hidden = open;
-});
-$('foldAll').addEventListener('click', () => {
-  const paras = rawParagraphs(rawRows());
-  const all = paras.every((pa) => lfold.has(pa[0].i));
-  lfold.clear();
-  if (!all) for (const pa of paras) lfold.add(pa[0].i);
-  renderNotes();
 });
 $('copyLyrics').addEventListener('click', async () => {
   try {
